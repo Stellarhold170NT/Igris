@@ -63,6 +63,14 @@ class ReplSession:
     cli_agent_messages: list[tuple[str, str]] = field(default_factory=list)
     """Assistant conversation history: alternating (\"user\"|\"assistant\", text)."""
 
+    tool_calling: bool = False
+    """When True, the cli_agent dispatch uses the ReAct tool-calling loop
+    instead of text-only streaming (activated by ``--coral``)."""
+
+    tool_chat_messages: list[dict[str, Any]] = field(default_factory=list)
+    """Structured message history for the tool-calling ReAct loop.
+    Persists across REPL turns so multi-turn tool conversations work."""
+
     prompt_history_backend: History | None = None
     """The live ``prompt_toolkit.History`` object backing the input prompt.
 
@@ -150,6 +158,7 @@ class ReplSession:
         self.accumulated_context.clear()
         self.token_usage.clear()
         self.cli_agent_messages.clear()
+        self.tool_chat_messages.clear()
         # Keep persisted cross-session task history on disk intact.
         # /reset is session-scoped, so swap in a fresh in-memory registry
         # that reuses the same backing store (if any) so /tasks still shows history.

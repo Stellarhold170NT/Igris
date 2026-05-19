@@ -57,7 +57,7 @@ from app.cli.interactive_shell.config import ReplConfig
 from app.cli.interactive_shell.prompting import follow_up as _follow_up
 from app.cli.interactive_shell.prompting import prompt_surface as _prompt_surface
 from app.cli.interactive_shell.routing import router as _router
-from app.cli.interactive_shell.runtime import HotReloadCoordinator, ReplSession, TaskRegistry
+from app.cli.interactive_shell.runtime import HotReloadCoordinator, ReplSession, TaskRegistry, TaskStatus
 from app.cli.interactive_shell.ui import (
     ANSI_DIM,
     ANSI_RESET,
@@ -348,8 +348,12 @@ def _dispatch_one_turn(
         )
         if turn.handled:
             return
-        with apply_reasoning_effort(session.reasoning_effort):
-            answer_cli_agent(text, session, console, confirm_fn=confirm_fn)
+        if session.tool_calling:
+            from app.cli.interactive_shell.chat.tool_agent import answer_with_tools
+            answer_with_tools(text, session, console, confirm_fn=confirm_fn)
+        else:
+            with apply_reasoning_effort(session.reasoning_effort):
+                answer_cli_agent(text, session, console, confirm_fn=confirm_fn)
         session.record("cli_agent", text)
         return
 
@@ -402,6 +406,7 @@ def _run_initial_input(
 async def _repl_main(
     initial_input: str | None = None,
     _config: ReplConfig | None = None,
+    tool_calling: bool = False,
 ) -> int:
     """Async REPL entrypoint — wires session, prompt history, persistent
     task registry, and the optional :class:`HotReloadCoordinator` before
@@ -414,6 +419,7 @@ async def _repl_main(
     """
     cfg = _config or ReplConfig.load()
     session = ReplSession()
+    session.tool_calling = tool_calling
     session.task_registry = TaskRegistry.persistent()
     pt_session = _build_prompt_session()
     session.prompt_history_backend = pt_session.history
@@ -454,12 +460,20 @@ async def _repl_main(
             _alert_inbox.set_current_inbox(None)
 
 
-def run_repl(initial_input: str | None = None, config: ReplConfig | None = None) -> int:
+def run_repl(
+    initial_input: str | None = None,
+    config: ReplConfig | None = None,
+    tool_calling: bool = False,
+) -> int:
     """Enter the interactive REPL. Returns the exit code."""
     cfg = config or ReplConfig.load()
 
     if not cfg.enabled:
         return 0
+
+    if tool_calling:
+        from app.cli.support.output import set_silent_tracker
+        set_silent_tracker()
 
     if not sys.stdin.isatty() and initial_input is None:
         # In non-TTY contexts (piped input, CI), don't start an interactive loop.
@@ -485,7 +499,7 @@ def run_repl(initial_input: str | None = None, config: ReplConfig | None = None)
         render_banner(real_console)
 
     try:
-        return asyncio.run(_repl_main(initial_input=initial_input, _config=cfg))
+        return asyncio.run(_repl_main(initial_input=initial_input, _config=cfg, tool_calling=tool_calling))
     except (EOFError, KeyboardInterrupt):
         return 0
 
@@ -516,6 +530,7 @@ class _ReplState:
     so callers don't have to re-derive it from the raw fields.
     """
 
+    session: ReplSession | None = None
     queue: asyncio.Queue[str] = field(default_factory=asyncio.Queue)
     current_task: asyncio.Task[None] | None = None
     # The currently-active dispatch's cancel event. Each turn allocates
@@ -582,6 +597,10 @@ class _ReplState:
             self.current_cancel_event.set()
         if self.confirm_event is not None:
             self.confirm_event.set()
+        if self.session is not None:
+            for task_rec in self.session.task_registry.list_recent(n=50):
+                if task_rec.status == TaskStatus.RUNNING:
+                    task_rec.request_cancel()
         task = self.current_task
         if task is not None and not task.done():
             if self.loop is not None:
@@ -753,7 +772,7 @@ async def _run_interactive(
         pt_session = _build_prompt_session()
         session.prompt_history_backend = pt_session.history
     spinner = _SpinnerState()
-    state = _ReplState()
+    state = _ReplState(session=session)
 
     cancel_kb = _build_cancel_key_bindings(state)
     _install_session_key_bindings(pt_session, cancel_kb)
@@ -768,6 +787,33 @@ async def _run_interactive(
     # dependency so ``/exit`` actually dismisses the prompt instead of
     # leaving the user staring at an idle one until they hit Enter.
     pt_app = pt_session.app
+
+    # Temporarily suspend drawing during dispatch when investigation display is active.
+    def should_suspend() -> bool:
+        from app.cli.support.output import _active_display
+        is_live_active = _active_display is not None and _active_display._live.is_started
+        return state.is_dispatch_running() and is_live_active and not state.is_awaiting_confirmation()
+
+    original_invalidate = pt_app.invalidate
+    original_render = pt_app.renderer.render
+
+    def new_invalidate() -> None:
+        if should_suspend():
+            try:
+                pt_app.renderer.erase()
+            except Exception:
+                pass
+            return
+        original_invalidate()
+
+    def new_render(app_arg: Any, layout: Any, is_done: bool = False) -> None:
+        if should_suspend():
+            return
+        original_render(app_arg, layout, is_done=is_done)
+
+    pt_app.invalidate = new_invalidate
+    pt_app.renderer.render = new_render
+
     main_loop = asyncio.get_running_loop()
     # Bind the loop so :meth:`_ReplState.cancel_current_dispatch` can
     # route ``Task.cancel`` through ``call_soon_threadsafe`` when it's
@@ -798,18 +844,43 @@ async def _run_interactive(
         show_spinner = _dispatch_should_show_spinner(text, session)
         if show_spinner:
             spinner.start()
+
+        # We run the synchronous body in a real Thread and await its completion.
+        # This allows us to shield the wait so we can guarantee the worker thread
+        # is fully stopped/cleaned up before we exit the dispatch and restore the prompt.
+        thread_done = asyncio.Event()
+        worker_exc: Exception | None = None
+
+        def run_thread() -> None:
+            nonlocal worker_exc
+            try:
+                _dispatch_one_turn(
+                    text,
+                    session,
+                    console,
+                    on_exit=_request_exit,
+                    confirm_fn=lambda prompt: _route_confirm_through_prompt(state, prompt),
+                )
+            except Exception as exc:
+                worker_exc = exc
+            finally:
+                main_loop.call_soon_threadsafe(thread_done.set)
+
+        worker_thread = threading.Thread(target=run_thread, daemon=True)
+        worker_thread.start()
+
         try:
-            await asyncio.to_thread(
-                _dispatch_one_turn,
-                text,
-                session,
-                console,
-                on_exit=_request_exit,
-                confirm_fn=lambda prompt: _route_confirm_through_prompt(state, prompt),
-            )
-        except asyncio.CancelledError:
+            await thread_done.wait()
+            if worker_exc is not None:
+                raise worker_exc
+        except (asyncio.CancelledError, KeyboardInterrupt):
+            dispatch_cancel.set()
+            try:
+                await asyncio.shield(thread_done.wait())
+            except KeyboardInterrupt:
+                pass
             console.print(f"[{WARNING}]· interrupted[/]")
-            raise
+            raise asyncio.CancelledError
         except DispatchCancelled:
             # Worker raised mid-confirmation because the user pressed
             # Esc / typed ``/cancel``. The exception already short-
@@ -909,6 +980,11 @@ async def _run_interactive(
                 except EOFError:
                     if state.is_dispatch_running():
                         state.cancel_current_dispatch()
+                        if state.current_task is not None:
+                            try:
+                                await state.current_task
+                            except (asyncio.CancelledError, Exception):
+                                pass
                         continue
                     return
                 except KeyboardInterrupt:
@@ -917,6 +993,11 @@ async def _run_interactive(
                     # a hint, second exits.
                     if state.is_dispatch_running():
                         state.cancel_current_dispatch()
+                        if state.current_task is not None:
+                            try:
+                                await state.current_task
+                            except (asyncio.CancelledError, KeyboardInterrupt, Exception):
+                                pass
                         continue
                     if repl_prompt_note_ctrl_c(echo_console):
                         return

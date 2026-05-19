@@ -214,6 +214,7 @@ INTEGRATION_SPECS: tuple[IntegrationSpec, ...] = (
         service="telegram",
         verifier=_verify_telegram,
         direct_effective=True,
+        setup_order=10,
         verify_order=26,
     ),
     IntegrationSpec(

@@ -132,3 +132,51 @@ def test_run_filters_by_execution_run_id() -> None:
         any(s.get("attributes", {}).get("execution.run_id") == "run-42" for s in t["spans"])
         for t in result["traces"]
     )
+
+
+def test_run_filters_by_http_target_glob_and_regex() -> None:
+    mock_client = MagicMock()
+    mock_client.is_configured = True
+    mock_client.tempo_datasource_uid = "tempo-uid"
+    mock_client.account_id = "acc-1"
+    mock_client.query_tempo.return_value = {
+        "success": True,
+        "traces": [
+            {
+                "traceId": "t1",
+                "spans": [{"name": "POST /v2/facts", "attributes": {"http.target": "/v2/facts", "http.method": "POST"}}],
+            },
+            {
+                "traceId": "t2",
+                "spans": [{"name": "POST /v2/facts/123", "attributes": {"http.target": "/v2/facts/123", "http.method": "POST"}}],
+            },
+            {
+                "traceId": "t3",
+                "spans": [{"name": "GET /v2/other", "attributes": {"http.target": "/v2/other", "http.method": "GET"}}],
+            },
+        ],
+        "total_traces": 3,
+    }
+    
+    # 1. Test glob matching with /**
+    with patch("app.tools.GrafanaTracesTool._resolve_grafana_client", return_value=mock_client):
+        result = query_grafana_traces(
+            service_name="svc",
+            http_target="/v2/facts/**",
+            grafana_endpoint="http://grafana",
+        )
+    assert result["available"] is True
+    assert len(result["traces"]) == 2
+    assert {t["traceId"] for t in result["traces"]} == {"t1", "t2"}
+
+    # 2. Test glob matching with /*
+    with patch("app.tools.GrafanaTracesTool._resolve_grafana_client", return_value=mock_client):
+        result = query_grafana_traces(
+            service_name="svc",
+            http_target="/v2/facts/*",
+            grafana_endpoint="http://grafana",
+        )
+    assert result["available"] is True
+    assert len(result["traces"]) == 2
+    assert {t["traceId"] for t in result["traces"]} == {"t1", "t2"}
+

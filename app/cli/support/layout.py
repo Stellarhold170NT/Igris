@@ -104,7 +104,7 @@ def render_landing() -> None:
     console.print(
         Text.assemble(
             ("  ", ""),
-            "open-source SRE agent for automated incident investigation and root cause analysis",
+            "The Unified AI Agent Ecosystem for Modern SREs",
         )
     )
     console.print()

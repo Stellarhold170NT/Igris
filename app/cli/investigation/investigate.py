@@ -305,6 +305,7 @@ def _run_session_alert_payload(
             async def _pump() -> None:
                 async for evt in astream_investigation(
                     raw_alert=raw_alert,
+                    cancel_event=cancel_requested,
                 ):
                     event_queue.put(evt)
 

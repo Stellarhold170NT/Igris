@@ -84,6 +84,7 @@ class TestTempoMixin:
                         "rootServiceName": "auth-service",
                         "durationMs": 150,
                         "spanCount": 2,
+                        "startTimeUnixNano": "1779089132117627946",
                     }
                 ]
             }
@@ -100,6 +101,8 @@ class TestTempoMixin:
                             "spans": [
                                 {
                                     "name": "DB Query",
+                                    "startTimeUnixNano": "1779089132117627946",
+                                    "endTimeUnixNano": "1779089132267627946",
                                     "attributes": [
                                         {
                                             "key": "db.system",
@@ -131,11 +134,14 @@ class TestTempoMixin:
         assert enriched_trace["root_service"] == "auth-service"
         assert enriched_trace["duration_ms"] == 150
         assert enriched_trace["span_count"] == 2
+        assert enriched_trace["start_time"] == "2026-05-18T07:25:32.117628+00:00"
 
         # Assert span parsing and attribute extraction
         assert len(enriched_trace["spans"]) == 1
         span = enriched_trace["spans"][0]
         assert span["name"] == "DB Query"
+        assert span["start_time"] == "2026-05-18T07:25:32.117628+00:00"
+        assert span["duration_ms"] == 150.0
         assert span["attributes"]["db.system"] == "postgresql"
         assert span["attributes"]["http.status_code"] == 200
 

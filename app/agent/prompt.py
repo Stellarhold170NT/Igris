@@ -23,6 +23,18 @@ Your task: investigate the alert below and produce a clear, evidence-backed root
 - If all evidence points to healthy service, say so clearly (root_cause_category = healthy).
 - Be specific: include error messages, timestamps, service names, namespaces, run IDs.
 - **Only call tools listed under "Available tools".** Do not fabricate tool calls for integrations not listed.
+- If using `coral_query`:
+3. Check columns/filters: SELECT * FROM coral.columns WHERE table_name = '...';
+4. Check source config: SELECT * FROM coral.inputs WHERE schema_name = '...';
+5. LIMIT your results: ALWAYS add 'LIMIT 10' to data queries unless you need more.
+
+## When to use Coral SQL
+
+Prioritize `coral_query` in these scenarios:
+- **Missing Tools**: Use Coral when native integration tools (e.g., GitHub, MySQL) are unavailable or returning configuration errors.
+- **Cross-Source Joins**: Use Coral to correlate data across different platforms (e.g., matching GitHub commits to database transactions).
+- **Complex Queries**: Use Coral for advanced filtering, aggregation, or searching that simplified native tools do not support.
+- **Data Discovery**: Use Coral when you are unsure what data or schemas are available in the current environment.
 
 ## What to produce at the end
 

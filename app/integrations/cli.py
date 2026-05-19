@@ -532,6 +532,22 @@ def _setup_discord() -> None:
     _register_discord_slash_command(application_id, bot_token)
 
 
+def _setup_telegram() -> None:
+    bot_token = _p("Telegram Bot token (HTTP API)", secret=True)
+    default_chat_id = _p("Default Chat ID (optional)")
+    if not bot_token:
+        _die("bot_token is required.")
+    upsert_integration(
+        "telegram",
+        {
+            "credentials": {
+                "bot_token": bot_token,
+                "default_chat_id": default_chat_id or None,
+            }
+        },
+    )
+
+
 def _setup_openclaw() -> None:
     print("  1) stdio (recommended)  2) Streamable HTTP  3) SSE")
     choice = _p("Choice", default="1")
@@ -742,6 +758,7 @@ _HANDLERS: dict[str, Any] = {
     "mariadb": _setup_mariadb,
     "mongodb_atlas": _setup_mongodb_atlas,
     "slack": _setup_slack,
+    "telegram": _setup_telegram,
     "opensearch": _setup_opensearch,
     "rds": _setup_rds,
     "tracer": _setup_tracer,

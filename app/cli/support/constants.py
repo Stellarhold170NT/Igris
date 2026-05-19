@@ -49,6 +49,7 @@ SETUP_SERVICES: tuple[str, ...] = (
     "rds",
     "sentry",
     "slack",
+    "telegram",
     "tracer",
     "vercel",
 )

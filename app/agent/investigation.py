@@ -50,6 +50,7 @@ _ALERT_SOURCE_TO_TOOL_SOURCES: dict[str, list[str]] = {
     "betterstack": ["betterstack"],
     "azure": ["azure", "azure_sql"],
     "splunk": ["splunk"],
+    "coral": ["coral"]
 }
 
 # Callback type: called with (event_kind, data_dict) during the agent loop.
@@ -64,6 +65,7 @@ class ConnectedInvestigationAgent:
         self,
         state: dict[str, Any],
         on_event: AgentEventCallback | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> dict[str, Any]:
         """Run the full investigation. Returns a dict of state updates.
 
@@ -160,6 +162,9 @@ class ConnectedInvestigationAgent:
                 debug_print(f"[seed:{tc.name}] → {_summarise(output)}")
 
         for iteration in range(MAX_INVESTIGATION_LOOPS):
+            if cancel_event is not None and cancel_event.is_set():
+                logger.info("[agent] cancel requested, bailing out")
+                break
             logger.debug("[agent] iteration=%d", iteration)
             _emit("llm_start", {"iteration": iteration})
             response = llm.invoke(messages, system=system, tools=tool_schemas)

@@ -93,6 +93,7 @@ async def astream_investigation(
     *,
     opensre_evaluate: bool = False,
     investigation_metadata: tuple[str, str, str] | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> AsyncIterator[Any]:
     """Stream investigation events in real time.
 
@@ -118,8 +119,20 @@ async def astream_investigation(
     event_queue: queue.Queue[StreamEvent | BaseException | None] = queue.Queue()
     loop = asyncio.get_running_loop()
 
+    cancel_event_internal = threading.Event()
+
+    def is_cancelled() -> bool:
+        return (cancel_event is not None and cancel_event.is_set()) or cancel_event_internal.is_set()
+
+    def _safe_call(fn: Any, *args: Any) -> None:
+        try:
+            if not loop.is_closed():
+                loop.call_soon_threadsafe(fn, *args)
+        except RuntimeError:
+            pass
+
     def _put(evt: StreamEvent) -> None:
-        loop.call_soon_threadsafe(event_queue.put_nowait, evt)
+        _safe_call(event_queue.put_nowait, evt)
 
     def _make_node_event(kind: str, node: str, data: dict[str, Any]) -> StreamEvent:
         return StreamEvent(
@@ -168,10 +181,15 @@ async def astream_investigation(
             from app.agent.investigation import ConnectedInvestigationAgent
             from app.delivery.publish_findings.node import generate_report
             from app.pipeline.pipeline import _merge
+            from app.cli.support.output import set_thread_cancel_event
+
+            set_thread_cancel_event(cancel_event or cancel_event_internal)
 
             state_any = cast(dict[str, Any], initial)
 
             # --- resolve_integrations ---
+            if is_cancelled():
+                return
             _put(_make_node_event("on_chain_start", "resolve_integrations", {}))
             resolved = resolve_integrations(initial)
             _merge(state_any, {"resolved_integrations": resolved})
@@ -190,6 +208,8 @@ async def astream_investigation(
             )
 
             # --- extract_alert ---
+            if is_cancelled():
+                return
             _put(_make_node_event("on_chain_start", "extract_alert", {}))
             _merge(state_any, extract_alert(initial))
             _put(
@@ -205,15 +225,28 @@ async def astream_investigation(
             )
 
             if state_any.get("is_noise"):
-                loop.call_soon_threadsafe(event_queue.put_nowait, None)
+                _safe_call(event_queue.put_nowait, None)
                 return
 
             # --- investigation agent (with real tool events) ---
-            _merge(
-                state_any, ConnectedInvestigationAgent().run(state_any, on_event=_on_agent_event)
+            if is_cancelled():
+                return
+
+            def _on_agent_event_wrapped(event_kind: str, data: dict[str, Any]) -> None:
+                if is_cancelled():
+                    raise KeyboardInterrupt("Investigation cancelled")
+                _on_agent_event(event_kind, data)
+
+            agent_updates = ConnectedInvestigationAgent().run(
+                state_any,
+                on_event=_on_agent_event_wrapped,
+                cancel_event=cancel_event or cancel_event_internal,
             )
+            _merge(state_any, agent_updates)
 
             # --- deliver / publish (skip terminal render — StreamRenderer owns it) ---
+            if is_cancelled():
+                return
             _put(_make_node_event("on_chain_start", "publish_findings", {}))
 
             # Patch render_report to a no-op so generate_report handles external
@@ -251,32 +284,39 @@ async def astream_investigation(
                 )
             )
 
+        except KeyboardInterrupt:
+            pass
         except Exception as exc:
             from app.utils.sentry_sdk import capture_exception
 
             capture_exception(exc)
-            loop.call_soon_threadsafe(event_queue.put_nowait, exc)
+            _safe_call(event_queue.put_nowait, exc)
         finally:
-            loop.call_soon_threadsafe(event_queue.put_nowait, None)
+            _safe_call(event_queue.put_nowait, None)
 
     thread = threading.Thread(target=_run_pipeline, daemon=True)
     thread.start()
 
-    while True:
-        # Drain the queue without blocking the event loop
-        try:
-            item = event_queue.get_nowait()
-        except queue.Empty:
-            await asyncio.sleep(0.01)
-            continue
+    exited_normally = False
+    try:
+        while True:
+            # Drain the queue without blocking the event loop
+            try:
+                item = event_queue.get_nowait()
+            except queue.Empty:
+                await asyncio.sleep(0.01)
+                continue
 
-        if item is None:
-            break
-        if isinstance(item, BaseException):
-            raise item
-        yield item
-
-    thread.join()
+            if item is None:
+                exited_normally = True
+                break
+            if isinstance(item, BaseException):
+                raise item
+            yield item
+    finally:
+        cancel_event_internal.set()
+        if exited_normally:
+            thread.join(timeout=1)
 
 
 @dataclass

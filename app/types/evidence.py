@@ -52,4 +52,5 @@ EvidenceSource = Literal[
     "rds",
     "ec2",
     "hermes",
+    "coral",
 ]

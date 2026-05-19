@@ -759,7 +759,7 @@ class ProgressTracker:
 
     def print_above(self, text: str) -> None:
         """Print text permanently above the active live region, or to stdout in text mode."""
-        if self._silent:
+        if self._silent or is_current_thread_cancelled():
             return
         if self._display:
             self._display.print_above(text)
@@ -769,6 +769,8 @@ class ProgressTracker:
 
     def print_above_renderable(self, renderable: Any) -> None:
         """Print a rich renderable permanently above the active live region, or to console."""
+        if self._silent or is_current_thread_cancelled():
+            return
         if self._display:
             self._display.print_above_renderable(renderable)
         else:
@@ -1022,6 +1024,22 @@ def set_silent_tracker() -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Thread-local cancellation tracking
+# ─────────────────────────────────────────────────────────────────────────────
+
+_local_storage = threading.local()
+
+
+def set_thread_cancel_event(event: threading.Event) -> None:
+    _local_storage.cancel_event = event
+
+
+def is_current_thread_cancelled() -> bool:
+    event = getattr(_local_storage, "cancel_event", None)
+    return event is not None and event.is_set()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Investigation header
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1029,6 +1047,8 @@ def set_silent_tracker() -> None:
 def render_investigation_header(
     alert_name: str, pipeline_name: str, severity: str, alert_id: str | None = None
 ) -> None:
+    if is_current_thread_cancelled():
+        return
     sev_color = ERROR if severity.lower() == "critical" else WARNING
     fields = [
         ("  Alert      ", alert_name, f"bold {TEXT}"),
@@ -1068,6 +1088,8 @@ def _is_verbose() -> bool:
 
 
 def debug_print(message: str) -> None:
+    if is_current_thread_cancelled():
+        return
     if not _is_verbose():
         return
     if get_output_format() == "rich":

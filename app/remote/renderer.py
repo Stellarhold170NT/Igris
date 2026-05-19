@@ -436,6 +436,7 @@ class StreamRenderer:
             # report the user has been watching stream live would be
             # silently discarded before the exception propagates.
             self._finish_active_node()
+            self._tracker.stop()
             if not _interrupted:
                 self._print_report()
         return dict(self._final_state)

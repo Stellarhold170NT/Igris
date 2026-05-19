@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import datetime
 from typing import TYPE_CHECKING, Any
 
 import requests
@@ -20,12 +21,14 @@ class TempoMixin:
         self: GrafanaClientBase,
         service_name: str,
         limit: int = 20,
+        q: str | None = None,
     ) -> dict[str, Any]:
         """Query Grafana Cloud Tempo for traces.
 
         Args:
             service_name: Service name to filter traces
             limit: Maximum number of traces to return
+            q: Custom TraceQL query string to bypass default service search
 
         Returns:
             Dictionary with traces and span details
@@ -43,7 +46,7 @@ class TempoMixin:
         )
 
         params: dict[str, str] = {
-            "q": f'{{.service.name="{service_name}"}}',
+            "q": q or f'{{.service.name="{service_name}"}}',
             "limit": str(limit),
         }
 
@@ -56,12 +59,23 @@ class TempoMixin:
                 trace_id = trace.get("traceID", "")
                 span_details = self._get_trace_details(trace_id)  # type: ignore[attr-defined]
 
+                # Convert startTimeUnixNano to human readable time
+                start_time_nano = trace.get("startTimeUnixNano")
+                start_time_str = ""
+                if start_time_nano:
+                    try:
+                        dt = datetime.datetime.fromtimestamp(float(start_time_nano) / 1e9, tz=datetime.timezone.utc)
+                        start_time_str = dt.isoformat()
+                    except Exception:
+                        start_time_str = str(start_time_nano)
+
                 enriched_traces.append(
                     {
                         "trace_id": trace_id,
                         "root_service": trace.get("rootServiceName", ""),
                         "duration_ms": trace.get("durationMs", 0),
                         "span_count": trace.get("spanCount", 0),
+                        "start_time": start_time_str,
                         "spans": span_details.get("spans", []),
                     }
                 )
@@ -122,9 +136,32 @@ class TempoMixin:
                                 if "spans" in scope:
                                     for span in scope["spans"]:
                                         attributes = self._extract_span_attributes(span)  # type: ignore[attr-defined]
+                                        
+                                        # Convert span start time
+                                        span_start = span.get("startTimeUnixNano")
+                                        span_start_str = ""
+                                        if span_start:
+                                            try:
+                                                dt = datetime.datetime.fromtimestamp(float(span_start) / 1e9, tz=datetime.timezone.utc)
+                                                span_start_str = dt.isoformat()
+                                            except Exception:
+                                                span_start_str = str(span_start)
+                                                
+                                        # Calculate span duration in ms
+                                        start_nano = span.get("startTimeUnixNano")
+                                        end_nano = span.get("endTimeUnixNano")
+                                        duration_ms = 0.0
+                                        if start_nano and end_nano:
+                                            try:
+                                                duration_ms = (int(end_nano) - int(start_nano)) / 1e6
+                                            except Exception:
+                                                pass
+
                                         spans.append(
                                             {
                                                 "name": span.get("name", "unknown"),
+                                                "start_time": span_start_str,
+                                                "duration_ms": duration_ms,
                                                 "attributes": attributes,
                                             }
                                         )

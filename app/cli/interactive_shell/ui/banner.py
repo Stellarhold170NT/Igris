@@ -62,27 +62,26 @@ from app.version import get_version
 # _FALLBACK_ART      minimal art, 44 cols, last resort
 
 SPLASH_ART = """\
- ██████╗ ██████╗ ███████╗███╗   ██╗███████╗██████╗ ███████╗
-██╔═══██╗██╔══██╗██╔════╝████╗  ██║██╔════╝██╔══██╗██╔════╝
-██║   ██║██████╔╝█████╗  ██╔██╗ ██║███████╗██████╔╝█████╗
-██║   ██║██╔═══╝ ██╔══╝  ██║╚██╗██║╚════██║██╔══██╗██╔══╝
-╚██████╔╝██║     ███████╗██║ ╚████║███████║██║  ██║███████╗
- ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝╚══════╝"""
+ ██╗   ██╗          ███████╗ ██████╗  ███████╗
+ ██║   ██║          ██╔════╝ ██╔══██╗ ██╔════╝
+ ██║   ██║  █████╗  ███████╗ ██████╔╝ █████╗  
+ ╚██╗ ██╔╝  ╚════╝  ╚════██║ ██╔══██╗ ██╔══╝  
+  ╚████╔╝           ███████║ ██║  ██║ ███████╗
+   ╚═══╝            ╚══════╝ ╚═╝  ╚═╝ ╚══════╝"""
 
 SPLASH_ART_NARROW = """\
-    _|_|    _|_|_|    _|_|_|_|  _|      _|    _|_|_|  _|_|_|    _|_|_|_|
-  _|    _|  _|    _|  _|        _|_|    _|  _|        _|    _|  _|
-  _|    _|  _|_|_|    _|_|_|    _|  _|  _|    _|_|    _|_|_|    _|_|_|
-  _|    _|  _|        _|        _|    _|_|        _|  _|    _|  _|
-    _|_|    _|        _|_|_|_|  _|      _|  _|_|_|    _|    _|  _|_|_|_|"""
+  _|      _|          _|_|_|  _|_|_|    _|_|_|_|
+  _|      _|  _|_|_|  _|      _|    _|  _|
+  _|      _|          _|_|_|  _|_|_|    _|_|_|
+    _|  _|                _|  _|    _|  _|
+      _|            _|_|_|    _|    _|  _|_|_|_|"""
 
 _FALLBACK_ART = """\
-  ___                    ____  ____  _____
- / _ \\ _ __   ___ _ __  / ___||  _ \\| ____|
-| | | | '_ \\ / _ \\ '_ \\ \\___ \\| |_) |  _|
-| |_| | |_) |  __/ | | | ___) |  _ <| |___
- \\___/| .__/ \\___|_| |_||____/|_| \\_\\_____|
-      |_|"""
+__     __     ____  ____  _____
+\\ \\   / /    / ___||  _ \\| ____|
+ \\ \\ / /____ \\___ \\| |_) |  _|
+  \\ V /|____| ___) |  _ <| |___
+   \\_/        |____/|_| \\_\\_____|"""
 
 
 def _render_art(console_width: int = 80) -> str:
@@ -212,14 +211,14 @@ def render_splash(console: Console | None = None, *, first_run: bool | None = No
 
     subtitle = Text()
     subtitle.append("  ")
-    subtitle.append("opensre", style=SECONDARY)
+    subtitle.append("v-sre", style=SECONDARY)
     subtitle.append("  ·  ", style=DIM)
     subtitle.append(f"v{version}", style=BRAND)
     console.print(subtitle)
 
     desc = Text()
     desc.append(
-        "  open-source SRE agent for automated incident investigation and root cause analysis",
+        "  VTS SRE agent for automated incident investigation and root cause analysis",
         style=DIM,
     )
     console.print(desc)
