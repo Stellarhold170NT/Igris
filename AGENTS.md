@@ -26,11 +26,10 @@
 
 ### Before Push
 
-1. Clean working tree
-2. `make test-cov` (or `make test-full`)
-3. `make lint`
-4. `make format-check` (run `make format` if it fails)
-5. `make typecheck`
+Before any push or PR creation, follow the mandatory checklist in [CI.md](CI.md).
+
+- `CI.md` is the source of truth for push/PR readiness.
+- Do not skip required checks.
 
 ## 1. Repo Map
 
@@ -46,13 +45,14 @@
 | `README.md`           | Product overview, install, quick start, high-level capabilities, and links to deeper docs.         |
 | `docs/DEVELOPMENT.md` | Contributor workflows: CI parity commands, dev container, benchmark, deployment, telemetry detail. |
 | `SETUP.md`            | Machine setup (all platforms, Windows, MCP/OpenClaw, troubleshooting).                             |
+| `CI.md`               | Mandatory pre-push checklist: lint, format, typecheck, tests — agents MUST follow before pushing. |
 | `CONTRIBUTING.md`     | Contribution workflow, branch/PR guidance, and quality expectations.                               |
 
 `app/` one level deeper:
 
 - `app/analytics/` — Analytics event plumbing and install helpers used by the onboarding flow.
 - `app/auth/` — JWT and authentication helpers for local and hosted runtime access.
-- `app/cli/` — Command-line interface, onboarding wizard, local LLM helpers, and CLI tests support. Interactive terminal (TTY) loop: `app/cli/interactive_shell/`.
+- `app/cli/` — Command-line interface, onboarding wizard, local LLM helpers, and CLI tests support. Interactive terminal (TTY) loop: `app/cli/interactive_shell/`. REPL watchdog slash commands (`/watch`, `/watches`, `/unwatch`): PR demo steps live under **Interactive shell: REPL watchdog demo** in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#interactive-shell-repl-watchdog-demo).
 - `app/constants/` — Shared prompt and other static constants.
 - `app/deployment/` — Single home for “deployment” code, split by concern:
     - `app/deployment/methods/` — _How_ you ship (Railway CLI, etc.).
@@ -166,6 +166,7 @@ Basic steps:
 - If adding new tests -> always place them in `tests/`, never in `app/` (no inline tests).
 - If CI-only tests are added -> mark them with the right pytest marker or place them in the appropriate e2e/synthetic/chaos folder so they do not run in the default local suite.
 - If investigation branching or loop behavior changes -> update `app/pipeline/pipeline.py` and the tests for that path.
+- If pushing or creating a PR -> follow the full pre-push checklist in [CI.md](CI.md).
 
 ## 4. Testing
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import queue
 import threading
@@ -243,6 +244,38 @@ async def astream_investigation(
                 cancel_event=cancel_event or cancel_event_internal,
             )
             _merge(state_any, agent_updates)
+
+            # --- upstream correlation ---
+            from app.correlation.node import node_correlate_upstream
+            from app.pipeline.pipeline import _build_correlation_config
+
+            _put(
+                _make_node_event(
+                    "on_chain_start",
+                    "correlate_upstream",
+                    {},
+                )
+            )
+
+            _merge(
+                state_any,
+                node_correlate_upstream(
+                    cast("AgentState", state_any),
+                    _build_correlation_config(state_any),
+                ),
+            )
+
+            _put(
+                _make_node_event(
+                    "on_chain_end",
+                    "correlate_upstream",
+                    {
+                        "output": {
+                            "correlation": state_any.get("correlation", {}),
+                        }
+                    },
+                )
+            )
 
             # --- deliver / publish (skip terminal render — StreamRenderer owns it) ---
             if is_cancelled():

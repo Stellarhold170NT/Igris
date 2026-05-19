@@ -1,7 +1,7 @@
 """Tool-calling assistant handler for the interactive shell.
 
 Drop-in replacement for ``answer_cli_agent`` when ``session.tool_calling``
-is True (``--coral`` flag).  Uses the agent LLM client with direct tool
+is True (``--vsre`` flag).  Uses the agent LLM client with direct tool
 execution — same ReAct loop as ``tool_chat.py``.
 """
 

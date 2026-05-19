@@ -46,6 +46,40 @@ def _format_provenance_lines(ctx: ReportContext) -> list[str]:
     return lines
 
 
+def _format_correlation_lines(ctx: ReportContext) -> tuple[list[str], list[str]]:
+    correlation = ctx.get("correlation") or {}
+    if not isinstance(correlation, dict):
+        return [], []
+
+    raw_signals = correlation.get("correlated_signals") or []
+    raw_drivers = correlation.get("most_likely_causal_drivers") or []
+
+    signal_lines: list[str] = []
+    for signal in raw_signals:
+        if not isinstance(signal, dict):
+            continue
+        name = signal.get("name") or "unknown"
+        source = signal.get("source") or "unknown"
+        score = signal.get("score")
+        score_text = f" score={float(score):.2f}" if isinstance(score, int | float) else ""
+        signal_lines.append(f"• {name} ({source}{score_text})")
+
+    driver_lines: list[str] = []
+    for driver in raw_drivers:
+        if not isinstance(driver, dict):
+            continue
+        name = driver.get("name") or "unknown"
+        confidence = driver.get("confidence")
+        rationale = driver.get("rationale") or ""
+        confidence_text = (
+            f" confidence={float(confidence):.2f}" if isinstance(confidence, int | float) else ""
+        )
+        suffix = f" — {_sanitize_for_slack(str(rationale))}" if rationale else ""
+        driver_lines.append(f"• {name}{confidence_text}{suffix}")
+
+    return signal_lines, driver_lines
+
+
 # ---------------------------------------------------------------------------
 # Shared section helpers — called by both text and block renderers
 # ---------------------------------------------------------------------------
@@ -365,7 +399,7 @@ def _remove_speculative_words(text: str) -> str:
 
 def _derive_root_cause_sentence(ctx: ReportContext) -> str:
     """Derive a concise, single-sentence root cause with causal preference."""
-    root_cause_text = ctx.get("root_cause", "") or ""
+    root_cause_text = str(ctx.get("root_cause", "") or "").strip()
     root_cause_text = re.sub(r"\s*\[(?i:evidence):[^\]]*\]", "", root_cause_text).strip()
     validated_claims = ctx.get("validated_claims", [])
 
@@ -440,6 +474,18 @@ def format_slack_message(ctx: ReportContext) -> str:
         conclusion_block += (
             "\n*Non-Validated Claims (Inferred):*\n" + "\n".join(non_validated_lines) + "\n"
         )
+
+    correlation_signal_lines, correlation_driver_lines = _format_correlation_lines(ctx)
+    if correlation_signal_lines or correlation_driver_lines:
+        conclusion_block += "\n## Upstream Correlation\n"
+        if correlation_signal_lines:
+            conclusion_block += (
+                "*Correlated signals:*\n" + "\n".join(correlation_signal_lines) + "\n"
+            )
+        if correlation_driver_lines:
+            conclusion_block += (
+                "*Most likely causal drivers:*\n" + "\n".join(correlation_driver_lines) + "\n"
+            )
 
     provenance_lines = _format_provenance_lines(ctx)
     provenance_block = ""
@@ -556,6 +602,68 @@ def format_telegram_message(ctx: ReportContext) -> str:
     return "\n\n".join(p for p in parts if p)
 
 
+def format_whatsapp_message(ctx: ReportContext) -> str:
+    """Format a plain-text RCA message for WhatsApp (mobile-friendly).
+
+    WhatsApp supports basic formatting (*bold*, _italic_, `code`) but we
+    keep the message plain and structured for maximum compatibility and
+    readability on small screens.
+    """
+    duration_seconds = ctx.get("investigation_duration_seconds")
+    alert_id = ctx.get("alert_id")
+    derived_rc = _derive_root_cause_sentence(ctx)
+    root_cause_sentence = derived_rc or "Not determined (insufficient evidence)."
+
+    parts: list[str] = []
+
+    # Severity header
+    severity = ctx.get("severity", "")
+    if severity:
+        parts.append(f"[{severity.upper()}] OpenSRE Investigation")
+    else:
+        parts.append("OpenSRE Investigation")
+
+    # Root cause + top log
+    top_log = _get_top_error_log(ctx.get("evidence") or {})
+    if top_log:
+        parts.append(f"{root_cause_sentence}\nTop log: {top_log}")
+    else:
+        parts.append(root_cause_sentence)
+
+    # Findings
+    validated_lines, non_validated_lines = _render_claim_lines(ctx)
+    if validated_lines:
+        parts.append("*Findings*\n" + "\n".join(validated_lines))
+    if non_validated_lines:
+        parts.append("*Inferred Claims*\n" + "\n".join(non_validated_lines))
+
+    # Provenance
+    provenance_lines = _format_provenance_lines(ctx)
+    if provenance_lines:
+        parts.append("*Provenance*\n" + "\n".join(provenance_lines))
+
+    # Recommended actions
+    remediation_steps = ctx.get("remediation_steps", [])
+    if remediation_steps:
+        parts.append("*Recommended Actions*\n" + "\n".join(f"• {s}" for s in remediation_steps))
+
+    # Investigation trace
+    trace_steps = build_investigation_trace(ctx)
+    if trace_steps:
+        parts.append("*Investigation Trace*\n" + "\n".join(trace_steps))
+
+    # Meta
+    meta_bits: list[str] = []
+    if duration_seconds is not None:
+        meta_bits.append(f"Timing: {duration_seconds}s")
+    if alert_id:
+        meta_bits.append(f"Alert ID: {alert_id}")
+    if meta_bits:
+        parts.append(" | ".join(meta_bits))
+
+    return "\n\n".join(p for p in parts if p)
+
+
 # ---------------------------------------------------------------------------
 # Block Kit renderer (Slack interactive cards)
 # ---------------------------------------------------------------------------
@@ -618,6 +726,24 @@ def build_slack_blocks(ctx: ReportContext) -> list[dict]:
         _add(_mrkdwn_section("\n".join(validated_lines)))
     if non_validated_lines:
         _add(_mrkdwn_section("*Inferred (not yet validated)*\n" + "\n".join(non_validated_lines)))
+
+    correlation_signal_lines, correlation_driver_lines = _format_correlation_lines(ctx)
+    if correlation_signal_lines or correlation_driver_lines:
+        blocks.append({"type": "divider"})
+        blocks.append(
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "Upstream Correlation"},
+            }
+        )
+        if correlation_signal_lines:
+            _add(_mrkdwn_section("*Correlated signals:*\n" + "\n".join(correlation_signal_lines)))
+        if correlation_driver_lines:
+            _add(
+                _mrkdwn_section(
+                    "*Most likely causal drivers:*\n" + "\n".join(correlation_driver_lines)
+                )
+            )
 
     provenance_lines = _format_provenance_lines(ctx)
     if provenance_lines:

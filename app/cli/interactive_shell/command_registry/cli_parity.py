@@ -18,6 +18,7 @@ from app.cli.interactive_shell.command_registry.suggestions import closest_choic
 from app.cli.interactive_shell.command_registry.types import ExecutionTier, SlashCommand
 from app.cli.interactive_shell.orchestration.action_executor import (
     SYNTHETIC_TEST_TIMEOUT_SECONDS,
+    print_interactive_wizard_handoff,
     start_background_cli_task,
 )
 from app.cli.interactive_shell.runtime import ReplSession, TaskKind
@@ -62,8 +63,23 @@ def run_cli_command(
     return True
 
 
-def _cmd_onboard(session: ReplSession, console: Console, args: list[str]) -> bool:  # noqa: ARG001
-    return run_cli_command(console, ["onboard", *args])
+def _cmd_onboard(session: ReplSession, console: Console, args: list[str]) -> bool:
+    # Onboard is a full-TTY interactive wizard. It cannot run inside
+    # the persistent REPL — the wizard's prompt_toolkit Application
+    # fights the shell's active one over the same terminal, producing
+    # the stacked-widget rendering bug. Refuse with a clear handoff to
+    # the right invocation instead of spawning a subprocess that will
+    # fail visually. Message body lives in
+    # ``action_executor.print_interactive_wizard_handoff`` so the
+    # LLM-classified path and this slash path stay in lock-step.
+    command_str = "onboard" + ((" " + " ".join(args)) if args else "")
+    print_interactive_wizard_handoff(console, command_str)
+    # Mirror :func:`run_opensre_cli_command`: record the attempted-but-
+    # refused invocation so the AI assistant's session history captures
+    # user intent regardless of which entry point they used.
+    session.record("cli_command", f"opensre {command_str}", ok=False)
+    # True = wizard exists and was handed off; ``_OPENSRE_BLOCKED_SUBCOMMANDS`` returns False for "shouldn't run at all".
+    return True
 
 
 def _cmd_remote(session: ReplSession, console: Console, args: list[str]) -> bool:  # noqa: ARG001
@@ -214,60 +230,95 @@ def _cmd_hermes(session: ReplSession, console: Console, args: list[str]) -> bool
     return run_cli_command(console, ["hermes", *args])
 
 
+def _cmd_watchdog(session: ReplSession, console: Console, args: list[str]) -> bool:  # noqa: ARG001
+    return run_cli_command(console, ["watchdog", *args])
+
+
 COMMANDS: list[SlashCommand] = [
     SlashCommand(
         "/onboard",
-        "run the interactive onboarding wizard ('/onboard local_llm')",
+        "Run the interactive onboarding wizard.",
         _cmd_onboard,
+        usage=("/onboard", "/onboard local_llm"),
         execution_tier=ExecutionTier.SAFE,
     ),
     SlashCommand(
         "/remote",
-        "connect to and trigger a remote deployed agent ('/remote health|investigate|ops|pull|trigger')",
+        "Connect to and trigger a remote deployed agent.",
         _cmd_remote,
+        usage=(
+            "/remote health",
+            "/remote investigate",
+            "/remote ops",
+            "/remote pull",
+            "/remote trigger",
+        ),
         execution_tier=ExecutionTier.SAFE,
     ),
     SlashCommand(
         "/tests",
-        "browse and run inventoried tests ('/tests list|run|synthetic')",
+        "Browse and run inventoried tests.",
         _cmd_tests,
+        usage=("/tests", "/tests list", "/tests run", "/tests synthetic"),
         first_arg_completions=tuple((name, f"/tests {name}") for name in _TEST_SUBCOMMANDS),
         execution_tier=ExecutionTier.SAFE,
     ),
     SlashCommand(
         "/guardrails",
-        "manage sensitive information guardrail rules ('/guardrails audit|init|rules|test')",
+        "Manage sensitive information guardrail rules.",
         _cmd_guardrails,
+        usage=(
+            "/guardrails audit",
+            "/guardrails init",
+            "/guardrails rules",
+            "/guardrails test",
+        ),
         execution_tier=ExecutionTier.SAFE,
     ),
     SlashCommand(
         "/update",
-        "check for a newer version and update if available",
+        "Check for a newer version and update if available.",
         _cmd_update,
         execution_tier=ExecutionTier.SAFE,
     ),
     SlashCommand(
         "/uninstall",
-        "remove opensre and all local data from this machine",
+        "Remove OpenSRE and all local data from this machine.",
         _cmd_uninstall,
         execution_tier=ExecutionTier.ELEVATED,
     ),
     SlashCommand(
         "/config",
-        "show or edit local OpenSRE config ('/config show|set <key> <value>')",
+        "Show or edit local OpenSRE config.",
         _cmd_config,
+        usage=("/config show", "/config set <key> <value>"),
         execution_tier=ExecutionTier.SAFE,
     ),
     SlashCommand(
         "/messaging",
-        "messaging security: DM pairing and identity management ('/messaging pair|allow|revoke|status')",
+        "Manage messaging security and identities.",
         _cmd_messaging,
+        usage=(
+            "/messaging pair",
+            "/messaging allow",
+            "/messaging revoke",
+            "/messaging status",
+        ),
         execution_tier=ExecutionTier.SAFE,
     ),
     SlashCommand(
         "/hermes",
-        "live-tail Hermes logs and route incidents to Telegram ('/hermes watch')",
+        "Live-tail Hermes logs and route incidents to Telegram.",
         _cmd_hermes,
+        usage=("/hermes watch",),
+        execution_tier=ExecutionTier.SAFE,
+    ),
+    SlashCommand(
+        "/watchdog",
+        "Monitor one process and send threshold alarms.",
+        _cmd_watchdog,
+        usage=("/watchdog --pid <pid> [--max-rss <size>] [--max-cpu <percent>]",),
+        examples=("/watchdog --pid 123 --max-rss 1G",),
         execution_tier=ExecutionTier.SAFE,
     ),
 ]

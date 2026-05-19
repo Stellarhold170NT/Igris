@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "opensre"
-version = "2026.4.5"
+version = "0.1"
 description = "Open-source SRE agent for automated incident investigation and root cause analysis. Automatically analyzes alerts from Slack, Grafana, Datadog, and other tooling."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -40,6 +40,7 @@ dependencies = [
     "questionary>=2.1.1",
     "prompt_toolkit>=3.0.0",
     "PyYAML>=6.0",
+    "numpy>=1.26.0",
     "tzdata>=2026.1",
     # OpenTelemetry
     "opentelemetry-api>=1.41.0",
@@ -59,6 +60,8 @@ dependencies = [
     "PyNaCl>=1.5.0",
     # MariaDB
     "pymysql>=1.1.0,<2.0.0",
+    # ClickHouse (used by first-class SigNoz + ClickHouse integrations)
+    "clickhouse-connect>=0.15.1,<1.0.0",
     "sentry-sdk>=2.59.0",
     # File locking for atomic store operations
     "filelock>=3.29.0",
@@ -92,6 +95,19 @@ dev = [
     "huggingface_hub>=0.26.0",
     "datasets>=3.0.0",
 ]
+release-dist = [
+    "build>=1.2.0",
+    "twine>=6.0.0",
+]
+release-binary = [
+    "pyinstaller>=6.3.0",
+]
+# Backward-compatible aggregate extra.
+release = [
+    "build>=1.2.0",
+    "twine>=6.0.0",
+    "pyinstaller>=6.3.0",
+]
 opensre-hub = [
     "huggingface_hub>=0.26.0",
     "datasets>=3.0.0",
@@ -99,6 +115,7 @@ opensre-hub = [
 kafka = [
     "confluent-kafka>=2.14.0",
 ]
+# Backward-compatible no-op extra; ClickHouse is now a core dependency.
 clickhouse = [
     "clickhouse-connect>=0.15.1",
 ]
@@ -154,5 +171,7 @@ ignore_names = [
 [dependency-groups]
 dev = [
     "pre-commit>=4.0.0",
+    "pytest>=9.0.3",
+    "pytest-cov>=7.1.0",
     "types-psutil>=7.2.2.20260408",
 ]

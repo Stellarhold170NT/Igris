@@ -69,6 +69,7 @@ class AgentState(TypedDict, total=False):
     # Shared context/evidence
     context: dict[str, Any]
     evidence: dict[str, Any]
+    correlation: dict[str, Any]
 
     # Investigation analysis
     root_cause: str
@@ -116,6 +117,9 @@ class AgentState(TypedDict, total=False):
 
     # Telegram context (when triggered from Telegram message)
     telegram_context: dict[str, Any]
+
+    # WhatsApp context (when triggered from WhatsApp message or override)
+    whatsapp_context: dict[str, Any]
 
     # OpenClaw context (for write-back targeting / transport overrides)
     openclaw_context: dict[str, Any]
@@ -175,6 +179,7 @@ class AgentStateModel(StrictConfigModel):
     resolved_integrations: dict[str, Any] = Field(default_factory=dict)
     context: dict[str, Any] = Field(default_factory=dict)
     evidence: dict[str, Any] = Field(default_factory=dict)
+    correlation: dict[str, Any] = Field(default_factory=dict)
     root_cause: str = ""
     root_cause_category: str = ""
     validated_claims: list[dict[str, Any]] = Field(default_factory=list)
@@ -195,6 +200,7 @@ class AgentStateModel(StrictConfigModel):
     slack_context: dict[str, Any] = Field(default_factory=dict)
     discord_context: dict[str, Any] = Field(default_factory=dict)
     telegram_context: dict[str, Any] = Field(default_factory=dict)
+    whatsapp_context: dict[str, Any] = Field(default_factory=dict)
     openclaw_context: dict[str, Any] = Field(default_factory=dict)
     thread_id: str = ""
     run_id: str = ""

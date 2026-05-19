@@ -146,10 +146,10 @@ def _capture_accepted_cli_invocation(ctx: click.Context) -> None:
     help="Enable or disable interactive-shell hot reload. Defaults to enabled.",
 )
 @click.option(
-    "--coral",
+    "--vsre",
     is_flag=True,
     default=False,
-    help="Start the SRE tool-calling chat shell with direct Coral/tool access.",
+    help="Start the SRE tool-calling chat shell with direct V-SRE/tool access.",
 )
 @click.pass_context
 def cli(
@@ -161,7 +161,7 @@ def cli(
     interactive: bool,
     layout: str | None,
     reload_enabled: bool | None,
-    coral: bool,
+    vsre: bool,
 ) -> None:
     """OpenSRE - open-source SRE agent for automated incident investigation and root cause analysis."""
     ctx.ensure_object(dict)
@@ -187,7 +187,7 @@ def cli(
                 cli_reload=reload_enabled,
             )
             if config.enabled:
-                raise SystemExit(run_repl(config=config, tool_calling=coral))
+                raise SystemExit(run_repl(config=config, tool_calling=vsre))
         click.echo("🚧 OpenSRE is in Public Beta — features may change.", err=True)
         render_landing()
         raise SystemExit(0)

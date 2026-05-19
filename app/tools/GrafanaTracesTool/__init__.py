@@ -245,7 +245,8 @@ def query_grafana_traces(
                 regex_target = ".*"
                 
             name_regex = f"(?i)^{method_part} {regex_target}"
-            q = f'{{.service.name="{service_name}" && name =~ "{name_regex}"}}'
+            name_regex_escaped = name_regex.replace('\\', '\\\\')
+            q = f'{{.service.name="{service_name}" && name =~ "{name_regex_escaped}"}}'
 
         result = client.query_tempo(service_name, limit=limit, q=q)
         if not result.get("success"):
