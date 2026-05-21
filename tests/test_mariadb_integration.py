@@ -20,6 +20,7 @@ from app.integrations.mariadb import (
     get_process_list,
     get_replication_status,
     get_slow_queries,
+    get_databases,
     mariadb_config_from_env,
     mariadb_extract_params,
     mariadb_is_available,
@@ -643,3 +644,34 @@ class TestGetReplicationStatus:
     def test_not_configured_returns_error(self) -> None:
         result = get_replication_status(MariaDBConfig())
         assert result["available"] is False
+
+
+class TestGetDatabases:
+    def _config(self) -> MariaDBConfig:
+        return MariaDBConfig(host="host", database="db", username="user")
+
+    @patch("app.integrations.mariadb._get_connection")
+    def test_returns_databases_on_success(self, mock_get_conn: MagicMock) -> None:
+        mock_conn, _ = _make_mock_conn(
+            fetchall_rows=[("auth",), ("portal",), ("mydb",)],
+            description=[("Database",)],
+        )
+        mock_get_conn.return_value = mock_conn
+
+        result = get_databases(self._config())
+
+        assert result["available"] is True
+        assert result["source"] == "mariadb"
+        assert result["databases"] == ["auth", "portal", "mydb"]
+        mock_conn.close.assert_called_once()
+
+    @patch("app.integrations.mariadb._get_connection", side_effect=Exception("connection error"))
+    def test_exception_returns_error(self, _: MagicMock) -> None:
+        result = get_databases(self._config())
+        assert result["available"] is False
+        assert "connection error" in result["error"]
+
+    def test_not_configured_returns_error(self) -> None:
+        result = get_databases(MariaDBConfig())
+        assert result["available"] is False
+

@@ -141,7 +141,7 @@ def _run_react_chat(chat_id: str, user_text: str, reply_to: str) -> None:
     tools = []
     for t in all_tools:
         try:
-            if t.is_available(resolved) or t.name == "coral_query":
+            if t.is_available(resolved):
                 tools.append(t)
         except Exception:
             pass

@@ -1404,28 +1404,32 @@ def load_env_integrations() -> list[dict[str, Any]]:
         except Exception:
             logger.debug("Failed to load OpenClaw config from env", exc_info=True)
 
-    mariadb_host = os.getenv("MARIADB_HOST", "").strip()
-    mariadb_database = os.getenv("MARIADB_DATABASE", "").strip()
-    if mariadb_host and mariadb_database:
-        try:
-            mariadb_config = build_mariadb_config(
-                {
-                    "host": mariadb_host,
-                    "port": os.getenv("MARIADB_PORT", "3306").strip(),
-                    "database": mariadb_database,
-                    "username": os.getenv("MARIADB_USERNAME", "").strip(),
-                    "password": os.getenv("MARIADB_PASSWORD", "").strip(),
-                    "ssl": os.getenv("MARIADB_SSL", "true").strip().lower() in ("true", "1", "yes"),
-                }
-            )
-            integrations.append(
-                _active_env_record(
-                    "mariadb",
-                    mariadb_config.model_dump(exclude={"integration_id"}),
+    mariadb_multi = _parse_instances_env("MARIADB_INSTANCES", "mariadb")
+    if mariadb_multi is not None:
+        integrations.append(mariadb_multi)
+    else:
+        mariadb_host = os.getenv("MARIADB_HOST", "").strip()
+        mariadb_database = os.getenv("MARIADB_DATABASE", "").strip()
+        if mariadb_host and mariadb_database:
+            try:
+                mariadb_config = build_mariadb_config(
+                    {
+                        "host": mariadb_host,
+                        "port": os.getenv("MARIADB_PORT", "3306").strip(),
+                        "database": mariadb_database,
+                        "username": os.getenv("MARIADB_USERNAME", "").strip(),
+                        "password": os.getenv("MARIADB_PASSWORD", "").strip(),
+                        "ssl": os.getenv("MARIADB_SSL", "true").strip().lower() in ("true", "1", "yes"),
+                    }
                 )
-            )
-        except Exception:
-            logger.debug("Failed to load MariaDB config from env", exc_info=True)
+                integrations.append(
+                    _active_env_record(
+                        "mariadb",
+                        mariadb_config.model_dump(exclude={"integration_id"}),
+                    )
+                )
+            except Exception:
+                logger.debug("Failed to load MariaDB config from env", exc_info=True)
 
     rabbitmq_host = os.getenv("RABBITMQ_HOST", "").strip()
     rabbitmq_username = os.getenv("RABBITMQ_USERNAME", "").strip()

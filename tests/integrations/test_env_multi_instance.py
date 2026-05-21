@@ -27,6 +27,9 @@ def _clear_env(monkeypatch) -> None:
         "AWS_EXTERNAL_ID",
         "AWS_ACCESS_KEY_ID",
         "AWS_SECRET_ACCESS_KEY",
+        "MARIADB_INSTANCES",
+        "MARIADB_HOST",
+        "MARIADB_DATABASE",
     ):
         monkeypatch.delenv(key, raising=False)
 
@@ -171,6 +174,11 @@ def test_empty_json_array_falls_through_to_legacy(
             "AWS_INSTANCES",
             "aws",
             {"name": "prod", "role_arn": "arn:aws:iam::1:role/r", "external_id": "e"},
+        ),
+        (
+            "MARIADB_INSTANCES",
+            "mariadb",
+            {"name": "prod", "host": "10.0.0.110", "database": "db1", "username": "u", "password": "p"},
         ),
     ],
 )

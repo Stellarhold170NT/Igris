@@ -85,6 +85,100 @@ def mariadb_config_from_env() -> MariaDBConfig | None:
     )
 
 
+def resolve_mariadb_config(
+    host: str | None = None,
+    database: str | None = None,
+    username: str | None = None,
+    password: str = "",
+    port: int = DEFAULT_MARIADB_PORT,
+    ssl: bool = True,
+    instance: str | None = None,
+) -> MariaDBConfig:
+    """Resolve MariaDB configuration, supporting multi-instance from store and env."""
+    from app.integrations.catalog import classify_integrations, load_env_integrations
+    from app.integrations.selectors import get_instances
+    from app.integrations.store import load_integrations
+
+    # Collect all active MariaDB instances from local store and environment vars
+    all_records = load_integrations() + load_env_integrations()
+    resolved = classify_integrations(all_records)
+    mariadb_instances = get_instances(resolved, "mariadb")
+
+    selected_config = None
+
+    if instance:
+        # Match by instance name
+        target_name = instance.strip().lower()
+        for inst in mariadb_instances:
+            if str(inst.get("name", "")).lower() == target_name:
+                selected_config = inst.get("config")
+                break
+    else:
+        # Implicit match by host and database
+        if database and host:
+            for inst in mariadb_instances:
+                cfg = inst.get("config") or {}
+                if (
+                    str(cfg.get("host", "")).lower() == host.lower()
+                    and str(cfg.get("database", "")).lower() == database.lower()
+                ):
+                    selected_config = cfg
+                    break
+        if not selected_config and database:
+            for inst in mariadb_instances:
+                cfg = inst.get("config") or {}
+                if str(cfg.get("database", "")).lower() == database.lower():
+                    selected_config = cfg
+                    break
+        if not selected_config and host:
+            for inst in mariadb_instances:
+                cfg = inst.get("config") or {}
+                if str(cfg.get("host", "")).lower() == host.lower():
+                    selected_config = cfg
+                    break
+
+    # If no specific match is found, fall back to the first instance
+    if not selected_config and mariadb_instances:
+        selected_config = mariadb_instances[0].get("config")
+
+    # If matching instance was found, resolve fields using it as priority
+    if selected_config:
+        resolved_host = selected_config.get("host") or host or ""
+        resolved_port = selected_config.get("port")
+        if resolved_port is None:
+            resolved_port = port
+        else:
+            try:
+                resolved_port = int(resolved_port)
+            except Exception:
+                resolved_port = port
+        resolved_database = selected_config.get("database") or database or ""
+        resolved_username = selected_config.get("username") or username or ""
+        resolved_password = selected_config.get("password") or password
+        resolved_ssl = selected_config.get("ssl")
+        if resolved_ssl is None:
+            resolved_ssl = ssl
+        else:
+            resolved_ssl = str(resolved_ssl).lower() in ("true", "1", "yes")
+    else:
+        resolved_host = host or ""
+        resolved_port = port
+        resolved_database = database or ""
+        resolved_username = username or ""
+        resolved_password = password
+        resolved_ssl = ssl
+
+    return MariaDBConfig(
+        host=resolved_host,
+        port=resolved_port,
+        database=resolved_database,
+        username=resolved_username,
+        password=resolved_password,
+        ssl=resolved_ssl,
+    )
+
+
+
 def _get_connection(config: MariaDBConfig) -> Any:
     """Create a pymysql connection from config. Caller must close."""
     import ssl as _ssl
@@ -457,3 +551,35 @@ def get_replication_status(config: MariaDBConfig) -> dict[str, Any]:
             method="get_replication_status",
         )
         return {"source": "mariadb", "available": False, "error": str(err)}
+
+
+def get_databases(config: MariaDBConfig) -> dict[str, Any]:
+    """Retrieve all available databases on the MariaDB instance.
+
+    Read-only: uses ``SHOW DATABASES``.
+    """
+    if not config.is_configured:
+        return {"source": "mariadb", "available": False, "error": "Not configured."}
+
+    try:
+        conn = _get_connection(config)
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SHOW DATABASES")
+                databases = [row[0] for row in cur.fetchall()]
+                return {
+                    "source": "mariadb",
+                    "available": True,
+                    "databases": databases,
+                }
+        finally:
+            conn.close()
+    except Exception as err:
+        report_validation_failure(
+            err,
+            logger=logger,
+            integration="mariadb",
+            method="get_databases",
+        )
+        return {"source": "mariadb", "available": False, "error": str(err)}
+

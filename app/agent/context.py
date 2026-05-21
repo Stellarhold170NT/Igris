@@ -93,7 +93,7 @@ def _resolve_from_local_sources(tracker: Any) -> dict[str, Any]:
     from app.integrations.store import STORE_PATH, load_integrations
 
     store_integrations = load_integrations()
-    env_integrations = _load_env_integrations() if not store_integrations else []
+    env_integrations = _load_env_integrations()
     integrations = _merge_local_integrations(store_integrations, env_integrations)
     if not integrations:
         tracker.complete(

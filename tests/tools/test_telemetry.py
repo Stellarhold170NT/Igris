@@ -920,6 +920,7 @@ _TOOLS_WITHOUT_DELIBERATE_CATCH: frozenset[str] = frozenset(
         "list_gitlab_commits",
         "list_gitlab_mrs",
         "list_gitlab_pipelines",
+        "list_mariadb_databases",
         "list_s3_objects",
         "list_sentry_issue_events",
         "opsgenie_alert_detail",

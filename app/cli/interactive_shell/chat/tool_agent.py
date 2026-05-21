@@ -70,7 +70,7 @@ def answer_with_tools(
         tools = []
         for t in all_tools:
             try:
-                if t.is_available(resolved) or t.name == "coral_query":
+                if t.is_available(resolved):
                     tools.append(t)
             except Exception:
                 pass

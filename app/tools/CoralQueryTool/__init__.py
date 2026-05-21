@@ -7,8 +7,13 @@ from typing import Any
 from app.tools.tool_decorator import tool
 
 
-def _always_available(_: Any) -> bool:
-    return True
+def _is_coral_available(_: Any) -> bool:
+    import os
+    import shutil
+    return (
+        os.getenv("CORAL_ENABLED", "false").lower() in ("true", "1", "yes")
+        and shutil.which("coral") is not None
+    )
 
 
 @tool(
@@ -29,7 +34,7 @@ def _always_available(_: Any) -> bool:
         "Complex data joins between different platforms",
         "Discovering available data schemas and functions dynamically",
     ],
-    is_available=_always_available,
+    is_available=_is_coral_available,
 )
 def coral_query(sql: str) -> dict[str, Any]:
     """Execute a SQL query using the Coral runtime."""

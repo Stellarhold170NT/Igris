@@ -588,7 +588,7 @@ def run_tool_repl() -> int:
         tools = []
         for t in all_tools:
             try:
-                if t.is_available(resolved) or t.name == "coral_query":
+                if t.is_available(resolved):
                     tools.append(t)
             except Exception:
                 pass

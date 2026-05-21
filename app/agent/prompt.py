@@ -293,6 +293,8 @@ def _format_connected_integrations(
     resolved_integrations: dict[str, Any],
     tools_by_source: dict[str, list[Any]],
 ) -> str:
+    from app.integrations.selectors import get_instances
+
     connected = sorted(
         key
         for key, value in resolved_integrations.items()
@@ -310,6 +312,19 @@ def _format_connected_integrations(
             tools = info.get("tools") or []
             tool_names = ", ".join(f"`{name}`" for name in tools) if tools else "no tools"
             status = "connected" if info.get("connected") else "available"
+            if info.get("connected"):
+                instances = get_instances(resolved_integrations, source)
+                if instances:
+                    inst_details = []
+                    for inst in instances:
+                        name = inst.get("name")
+                        db = inst.get("config", {}).get("database")
+                        if name and db and name != db:
+                            inst_details.append(f"`{name}` (db: `{db}`)")
+                        elif name:
+                            inst_details.append(f"`{name}`")
+                    if inst_details:
+                        status = f"connected, instances: {', '.join(inst_details)}"
             lines.append(f"- **{source}** ({status}): {tool_names}")
         if lines:
             return "\n".join(lines)
@@ -320,8 +335,22 @@ def _format_connected_integrations(
         tool_names = (
             ", ".join(f"`{tool.name}`" for tool in source_tools) if source_tools else "no tools"
         )
-        lines.append(f"- **{source}** (connected): {tool_names}")
+        status = "connected"
+        instances = get_instances(resolved_integrations, source)
+        if instances:
+            inst_details = []
+            for inst in instances:
+                name = inst.get("name")
+                db = inst.get("config", {}).get("database")
+                if name and db and name != db:
+                    inst_details.append(f"`{name}` (db: `{db}`)")
+                elif name:
+                    inst_details.append(f"`{name}`")
+            if inst_details:
+                status = f"connected, instances: {', '.join(inst_details)}"
+        lines.append(f"- **{source}** ({status}): {tool_names}")
     for source in sorted(set(tools_by_source) - set(connected)):
         tool_names = ", ".join(f"`{tool.name}`" for tool in tools_by_source[source])
         lines.append(f"- **{source}** (available): {tool_names}")
     return "\n".join(lines) if lines else "No connected integrations exposed tools."
+

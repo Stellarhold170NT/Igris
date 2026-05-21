@@ -1,9 +1,9 @@
-"""MariaDB Slow Queries Tool."""
+"""MariaDB List Databases Tool."""
 
 from typing import Any
 
 from app.integrations.mariadb import (
-    get_slow_queries,
+    get_databases,
     mariadb_extract_params,
     mariadb_is_available,
     resolve_mariadb_config,
@@ -12,8 +12,8 @@ from app.tools.tool_decorator import tool
 
 
 @tool(
-    name="get_mariadb_slow_queries",
-    description="Retrieve top MariaDB queries by average execution time from performance_schema.events_statements_summary_by_digest.",
+    name="list_mariadb_databases",
+    description="Retrieve all available databases on the MariaDB instance from SHOW DATABASES.",
     source="mariadb",
     surfaces=("investigation", "chat"),
     is_available=mariadb_is_available,
@@ -23,28 +23,21 @@ from app.tools.tool_decorator import tool
         "properties": {
             "database": {
                 "type": "string",
-                "description": "The specific database name to retrieve slow queries from.",
-            },
-            "max_results": {
-                "type": "integer",
-                "description": "Maximum number of query records to return.",
-                "default": 50,
+                "description": "Optional name of a database to use as the initial connection database.",
             },
         },
-        "required": ["database"],
     },
 )
-def get_mariadb_slow_queries(
+def list_mariadb_databases(
     host: str,
     username: str,
     database: str | None = None,
     password: str = "",
     port: int = 3306,
     ssl: bool = True,
-    max_results: int = 50,
     instance: str | None = None,
 ) -> dict[str, Any]:
-    """Fetch slow queries from performance_schema.
+    """Fetch all available databases on the MariaDB instance.
 
     Args:
         host: Target host.
@@ -53,7 +46,6 @@ def get_mariadb_slow_queries(
         password: Password.
         port: Port.
         ssl: SSL enabled flag.
-        max_results: Maximum results to retrieve.
         instance: Optional name of the configured MariaDB instance to target.
     """
     config = resolve_mariadb_config(
@@ -65,13 +57,11 @@ def get_mariadb_slow_queries(
         ssl=ssl,
         instance=instance,
     )
-    # Ensure config has max_results set from the parameter
-    config.max_results = max_results
     _db_defaulted = not config.database
     if not config.database:
         config.database = "mysql"
 
-    result = get_slow_queries(config)
+    result = get_databases(config)
     if _db_defaulted:
         result["default_db_warning"] = (
             "WARNING: No database was specified; defaulted to 'mysql'. Results may not reflect application data."
