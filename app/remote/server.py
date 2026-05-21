@@ -153,9 +153,23 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
             name="vercel-poller",
         )
 
+    # Start Telegram bot polling if token is configured
+    telegram_task: asyncio.Task[None] | None = None
+    if os.getenv("TELEGRAM_BOT_TOKEN", "").strip():
+        from app.remote.telegram_bot import run_telegram_polling
+
+        telegram_task = asyncio.create_task(
+            run_telegram_polling(),
+            name="telegram-bot",
+        )
+
     try:
         yield
     finally:
+        if telegram_task is not None:
+            telegram_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await telegram_task
         if poller_task is not None:
             poller_task.cancel()
             with suppress(asyncio.CancelledError):
@@ -388,10 +402,53 @@ def deep_health_check() -> dict[str, Any]:
 
 
 @app.post("/investigate", response_model=InvestigateResponse)
-def investigate(req: InvestigateRequest) -> InvestigateResponse:
+def investigate(
+    req: InvestigateRequest,
+    background_tasks: BackgroundTasks,
+    x_background: str | None = Header(default=None),
+) -> InvestigateResponse:
     """Run an investigation and persist the result as a ``.md`` file."""
     try:
         raw_alert = _normalized_request_alert(req)
+
+        if x_background == "true":
+            from app.cli.investigation import resolve_investigation_context
+            alert_name, pipeline_name, severity = resolve_investigation_context(
+                raw_alert=raw_alert,
+                alert_name=req.alert_name,
+                pipeline_name=req.pipeline_name,
+                severity=req.severity,
+            )
+            inv_id = _make_id(alert_name)
+
+            def _run():
+                try:
+                    result, resolved_name, resolved_pipeline, resolved_sev = _execute_investigation(
+                        raw_alert=raw_alert,
+                        alert_name=req.alert_name,
+                        pipeline_name=req.pipeline_name,
+                        severity=req.severity,
+                    )
+                    _save_investigation(
+                        inv_id=inv_id,
+                        alert_name=resolved_name,
+                        pipeline_name=resolved_pipeline,
+                        severity=resolved_sev,
+                        result=result,
+                    )
+                except Exception as exc:
+                    capture_exception(exc)
+                    logger.exception("Background investigation failed")
+
+            background_tasks.add_task(_run)
+            return InvestigateResponse(
+                id=inv_id,
+                report="Investigation scheduled in background.",
+                root_cause="Scheduled",
+                problem_md="Scheduled",
+                is_noise=False,
+            )
+
         result, alert_name, pipeline_name, severity = _execute_investigation(
             raw_alert=raw_alert,
             alert_name=req.alert_name,
