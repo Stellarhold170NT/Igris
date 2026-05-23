@@ -816,3 +816,17 @@ class PrefectIntegrationConfig(StrictConfigModel):
     _normalize_strs = field_validator("api_key", "account_id", "workspace_id", mode="before")(
         normalize_str()
     )
+
+
+class VauthzIntegrationConfig(StrictConfigModel):
+    """Normalized Vauthz configuration settings."""
+
+    pdp_syncheck_url: str = "http://117.5.151.111:4000/api/fleet"
+    pdp_gateway_url: str = "http://117.5.151.111:7766"
+    vauthz_url: str = "http://117.5.151.111:8081"
+    integration_id: str = ""
+
+    _normalize_urls = field_validator(
+        "pdp_syncheck_url", "pdp_gateway_url", "vauthz_url", mode="before"
+    )(normalize_url())
+

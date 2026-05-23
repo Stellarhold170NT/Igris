@@ -1254,6 +1254,18 @@ wheels = [
 ]
 
 [[package]]
+name = "jsondiff"
+version = "2.2.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyyaml" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/35/48/841137f1843fa215ea284834d1514b8e9e20962bda63a636c7417e02f8fb/jsondiff-2.2.1.tar.gz", hash = "sha256:658d162c8a86ba86de26303cd86a7b37e1b2c1ec98b569a60e2ca6180545f7fe", size = 26649, upload-time = "2024-08-29T04:09:06.201Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/63/94/a8066f84d62ab666d61ef97deba1a33126e3e5c0c0da2c458ada17053ed6/jsondiff-2.2.1-py3-none-any.whl", hash = "sha256:b1f0f7e2421881848b1d556d541ac01a91680cfcc14f51a9b62cdf4da0e56722", size = 13440, upload-time = "2024-08-29T04:09:04.955Z" },
+]
+
+[[package]]
 name = "jsonschema"
 version = "4.26.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1863,6 +1875,7 @@ dependencies = [
     { name = "google-api-python-client" },
     { name = "google-auth" },
     { name = "httpx" },
+    { name = "jsondiff" },
     { name = "keyring" },
     { name = "kubernetes" },
     { name = "mcp" },
@@ -1969,6 +1982,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "huggingface-hub", marker = "extra == 'dev'", specifier = ">=0.26.0" },
     { name = "huggingface-hub", marker = "extra == 'opensre-hub'", specifier = ">=0.26.0" },
+    { name = "jsondiff" },
     { name = "keyring" },
     { name = "kubernetes", specifier = ">=28.1.0" },
     { name = "mcp", specifier = ">=1.27.0" },

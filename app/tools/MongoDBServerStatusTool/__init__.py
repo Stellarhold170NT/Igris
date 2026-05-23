@@ -3,7 +3,7 @@
 from typing import Any
 
 from app.integrations.mongodb import (
-    MongoDBConfig,
+    build_mongodb_config,
     get_server_status,
     mongodb_extract_params,
     mongodb_is_available,
@@ -18,16 +18,24 @@ from app.tools.tool_decorator import tool
     surfaces=("investigation", "chat"),
     is_available=mongodb_is_available,
     extract_params=mongodb_extract_params,
+    input_schema={
+        "type": "object",
+        "properties": {},
+    },
 )
 def get_mongodb_server_status(
-    connection_string: str,
+    connection_string: str = "",
     auth_source: str = "admin",
     tls: bool = True,
+    database: str = "",
 ) -> dict[str, Any]:
     """Fetch server status metrics from a MongoDB instance."""
-    config = MongoDBConfig(
-        connection_string=connection_string,
-        auth_source=auth_source,
-        tls=tls,
+    config = build_mongodb_config(
+        {
+            "connection_string": connection_string,
+            "database": database,
+            "auth_source": auth_source,
+            "tls": tls,
+        }
     )
     return get_server_status(config)

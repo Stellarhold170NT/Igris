@@ -31,6 +31,7 @@ from app.integrations.config_models import (
     SlackWebhookConfig,
     SplunkIntegrationConfig,
     TelegramBotConfig,
+    VauthzIntegrationConfig,
     VictoriaLogsIntegrationConfig,
     WhatsAppConfig,
 )
@@ -859,6 +860,20 @@ def _classify_service_instance(
         if signoz_config.clickhouse_host:
             return signoz_config.model_dump(), "signoz"
         return None, None
+
+    if key == "vauthz":
+        try:
+            vauthz_config = VauthzIntegrationConfig.model_validate(
+                {
+                    "pdp_syncheck_url": credentials.get("pdp_syncheck_url") or credentials.get("syncheck_url", ""),
+                    "pdp_gateway_url": credentials.get("pdp_gateway_url") or credentials.get("gateway_url", ""),
+                    "vauthz_url": credentials.get("vauthz_url", ""),
+                    "integration_id": record_id,
+                }
+            )
+        except Exception:
+            return None, None
+        return vauthz_config.model_dump(), "vauthz"
 
     # Fallback for unknown services: pass through credentials + record id.
     return {"credentials": credentials, "integration_id": record_id}, key

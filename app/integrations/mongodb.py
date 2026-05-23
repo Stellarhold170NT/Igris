@@ -88,15 +88,28 @@ def _get_client(config: MongoDBConfig) -> Any:
     """Create a pymongo MongoClient from config. Caller must close."""
     from pymongo import MongoClient
 
-    return MongoClient(
-        config.connection_string,
-        authSource=config.auth_source,
-        tls=config.tls,
-        serverSelectionTimeoutMS=DEFAULT_MONGODB_TIMEOUT_MS,
-        connectTimeoutMS=DEFAULT_MONGODB_TIMEOUT_MS,
-        socketTimeoutMS=int(config.timeout_seconds * 1000),
-        appName="opensre",
-    )
+    kwargs: dict[str, Any] = {
+        "serverSelectionTimeoutMS": DEFAULT_MONGODB_TIMEOUT_MS,
+        "connectTimeoutMS": DEFAULT_MONGODB_TIMEOUT_MS,
+        "socketTimeoutMS": int(config.timeout_seconds * 1000),
+        "appName": "opensre",
+    }
+    # Only pass tls/authSource explicitly when not already in the connection string.
+    # pymongo infers authSource from the URI database path (e.g. /vauthz),
+    # so we must not override it when a database path is present.
+    cs_lower = config.connection_string.lower()
+    if "tls=" not in cs_lower and "ssl=" not in cs_lower:
+        kwargs["tls"] = config.tls
+    if "authsource=" not in cs_lower:
+        # Check if URI has a database path (e.g. mongodb://host/dbname)
+        # which pymongo uses as default authSource
+        from urllib.parse import urlparse
+
+        parsed = urlparse(config.connection_string)
+        db_in_path = parsed.path.strip("/")
+        if not db_in_path:
+            kwargs["authSource"] = config.auth_source
+    return MongoClient(config.connection_string, **kwargs)
 
 
 def validate_mongodb_config(config: MongoDBConfig) -> MongoDBValidationResult:

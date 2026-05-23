@@ -334,6 +334,7 @@ INTEGRATION_SPECS: tuple[IntegrationSpec, ...] = (
     IntegrationSpec(service="alicloud", direct_effective=True),
     IntegrationSpec(service="notion"),
     IntegrationSpec(service="prefect"),
+    IntegrationSpec(service="vauthz", direct_effective=True),
     IntegrationSpec(service="posthog"),
     IntegrationSpec(service="trello"),
     IntegrationSpec(service="rds", setup_order=11),

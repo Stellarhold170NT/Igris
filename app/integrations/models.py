@@ -35,6 +35,7 @@ from app.integrations.config_models import (
     SplunkIntegrationConfig,
     TelegramBotConfig,
     TracerIntegrationConfig,
+    VauthzIntegrationConfig,
     VercelIntegrationConfig,
     VictoriaLogsIntegrationConfig,
 )
@@ -78,6 +79,7 @@ __all__ = [
     "SplunkIntegrationConfig",
     "TelegramBotConfig",
     "TracerIntegrationConfig",
+    "VauthzIntegrationConfig",
     "VercelIntegrationConfig",
     "VictoriaLogsIntegrationConfig",
 ]
