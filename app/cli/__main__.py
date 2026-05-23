@@ -184,7 +184,6 @@ def cli(
             config = ReplConfig.load(
                 cli_enabled=interactive,
                 cli_layout=layout,
-                cli_reload=reload_enabled,
             )
             if config.enabled:
                 raise SystemExit(run_repl(config=config, tool_calling=vsre))
@@ -215,6 +214,13 @@ def _is_update_invocation(argv: list[str]) -> bool:
     return bool(command_parts) and command_parts[0] == "update"
 
 
+def _sentry_entrypoint_for_invocation(argv: list[str]) -> str:
+    command_parts = _resolve_command_parts(cli, argv)
+    if command_parts and command_parts[0] == "debug":
+        return "debug"
+    return "cli"
+
+
 def _should_capture_cli_exception(exc: click.ClickException) -> bool:
     """Return whether a Click error represents an unexpected internal failure."""
     return should_report_exception(exc)
@@ -226,7 +232,7 @@ def main(argv: list[str] | None = None) -> int:
     load_dotenv(override=False)
     cli_argv = list(sys.argv[1:] if argv is None else argv)
     try:
-        init_sentry(entrypoint="cli")
+        init_sentry(entrypoint=_sentry_entrypoint_for_invocation(cli_argv))
     except ModuleNotFoundError as exc:
         if exc.name != "sentry_sdk" or not _is_update_invocation(cli_argv):
             raise

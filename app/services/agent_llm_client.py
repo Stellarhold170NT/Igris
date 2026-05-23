@@ -53,9 +53,10 @@ class AgentLLMResponse:
 
 def _anthropic_tool_schema(tool: Any) -> dict[str, Any]:
     return {
+        "type": "custom",
         "name": tool.name,
         "description": tool.description,
-        "input_schema": tool.input_schema,
+        "input_schema": tool.public_input_schema,
     }
 
 
@@ -65,7 +66,7 @@ def _openai_tool_schema(tool: Any) -> dict[str, Any]:
         "function": {
             "name": tool.name,
             "description": tool.description,
-            "parameters": tool.input_schema,
+            "parameters": tool.public_input_schema,
         },
     }
 
@@ -265,6 +266,116 @@ class BedrockAgentClient(AnthropicAgentClient):
         return f"{self.provider_name} request rejected (HTTP 400): {err.message}"
 
 
+class BedrockConverseAgentClient:
+    """Bedrock investigation client using the boto3 Converse API (non-Anthropic models)."""
+
+    provider_name = "Bedrock"
+
+    def __init__(self, model: str, max_tokens: int = 4096) -> None:
+        import boto3
+
+        from app.services.bedrock_converse import require_aws_region
+
+        self._model = model
+        self._max_tokens = max_tokens
+        region = require_aws_region()
+        self._boto3_client = boto3.client("bedrock-runtime", region_name=region)
+
+    def tool_schemas(self, tools: list[Any]) -> list[dict[str, Any]]:
+        from app.services.bedrock_converse import build_converse_tool_specs
+
+        return build_converse_tool_specs(tools)
+
+    def invoke(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        system: str | None = None,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> AgentLLMResponse:
+        import botocore.exceptions
+
+        from app.guardrails.engine import GuardrailBlockedError
+        from app.services.bedrock_converse import (
+            apply_guardrails_to_converse_payload,
+            is_non_retryable_bedrock_code,
+            map_bedrock_client_error,
+            parse_converse_output,
+            to_converse_messages,
+        )
+
+        converse_messages = to_converse_messages(messages)
+        converse_messages, system = apply_guardrails_to_converse_payload(
+            messages=converse_messages,
+            system=system,
+        )
+
+        kwargs: dict[str, Any] = {
+            "modelId": self._model,
+            "inferenceConfig": {"maxTokens": self._max_tokens},
+            "messages": converse_messages,
+        }
+        if system:
+            kwargs["system"] = [{"text": system}]
+        if tools:
+            kwargs["toolConfig"] = {"tools": tools}
+
+        backoff = _RETRY_INITIAL_BACKOFF_SEC
+        response: dict[str, Any] | None = None
+        last_err: Exception | None = None
+        for attempt in range(_RETRY_MAX_ATTEMPTS):
+            try:
+                response = self._boto3_client.converse(**kwargs)
+                break
+            except GuardrailBlockedError:
+                raise
+            except botocore.exceptions.ClientError as err:
+                code = err.response.get("Error", {}).get("Code", "")
+                if is_non_retryable_bedrock_code(code):
+                    raise map_bedrock_client_error(self._model, err) from err
+                if attempt == _RETRY_MAX_ATTEMPTS - 1:
+                    raise map_bedrock_client_error(self._model, err) from err
+                last_err = err
+                time.sleep(backoff)
+                backoff *= 2
+            except Exception as err:
+                if attempt == _RETRY_MAX_ATTEMPTS - 1:
+                    raise RuntimeError(f"Bedrock API request failed: {err}") from err
+                last_err = err
+                time.sleep(backoff)
+                backoff *= 2
+        else:
+            raise RuntimeError("Bedrock invocation failed without a concrete error") from last_err
+
+        if response is None:
+            raise RuntimeError("Bedrock invocation failed without a response") from last_err
+
+        content, raw_tool_calls, stop_reason, raw_message = parse_converse_output(response)
+        tool_calls = [
+            ToolCall(id=tool_id, name=name, input=inputs)
+            for tool_id, name, inputs in raw_tool_calls
+        ]
+        return AgentLLMResponse(
+            content=content,
+            tool_calls=tool_calls,
+            stop_reason=stop_reason,
+            raw_content=raw_message,
+        )
+
+    @staticmethod
+    def build_tool_result_message(tool_calls: list[ToolCall], results: list[Any]) -> dict[str, Any]:
+        from app.services.bedrock_converse import build_tool_result_message as _build
+
+        return _build(tool_calls, results)
+
+    @staticmethod
+    def build_assistant_message(raw_content: Any) -> dict[str, Any]:
+        """Preserve the full Converse assistant ``output.message`` for the next turn."""
+        if not isinstance(raw_content, dict):
+            return {"role": "assistant", "content": []}
+        return raw_content
+
+
 _OPENAI_O_SERIES_RE = re.compile(r"(?:^|[^A-Za-z0-9])o\d", re.IGNORECASE)
 _OPENAI_GPT5_RE = re.compile(r"(?:^|[^A-Za-z0-9])gpt-5", re.IGNORECASE)
 
@@ -357,6 +468,10 @@ class OpenAIAgentClient:
         else:
             raise RuntimeError("OpenAI invocation failed") from last_err
 
+        if not hasattr(response, "choices") or not response.choices:
+            raise RuntimeError(
+                f"OpenAI API returned an unexpected response: {type(response).__name__}"
+            )
         choice = response.choices[0]
         msg = choice.message
         content = msg.content or ""
@@ -573,7 +688,9 @@ def _try_parse_tool_call_json(text: str) -> dict[str, Any] | None:
     return None
 
 
-_AgentClientType = AnthropicAgentClient | OpenAIAgentClient | CLIBackedAgentClient
+_AgentClientType = (
+    AnthropicAgentClient | OpenAIAgentClient | CLIBackedAgentClient | BedrockConverseAgentClient
+)
 _agent_client: _AgentClientType | None = None
 
 
@@ -585,10 +702,10 @@ def get_agent_llm() -> _AgentClientType:
 
     from pydantic import ValidationError
 
-    from app.config import LLMSettings
+    from app.config import resolve_llm_settings
 
     try:
-        settings = LLMSettings.from_env()
+        settings = resolve_llm_settings()
     except ValidationError as exc:
         raise RuntimeError(str(exc)) from exc
 
@@ -600,18 +717,24 @@ def get_agent_llm() -> _AgentClientType:
             model=settings.openai_reasoning_model,
             max_tokens=OPENAI_LLM_CONFIG.max_tokens,
         )
-    elif provider in ("openrouter", "gemini", "nvidia", "minimax", "requesty", "ollama"):
+    elif provider in ("openrouter", "gemini", "nvidia", "minimax", "ollama"):
         # All OpenAI-compatible providers
-        from app.config import LLMSettings
-
         _agent_client = _create_openai_compat_client(settings, provider)
     elif provider == "bedrock":
         from app.config import BEDROCK_LLM_CONFIG
+        from app.services.llm_client import _is_anthropic_bedrock_model
 
-        _agent_client = BedrockAgentClient(
-            model=settings.bedrock_reasoning_model,
-            max_tokens=BEDROCK_LLM_CONFIG.max_tokens,
-        )
+        model = settings.bedrock_reasoning_model
+        if _is_anthropic_bedrock_model(model):
+            _agent_client = BedrockAgentClient(
+                model=model,
+                max_tokens=BEDROCK_LLM_CONFIG.max_tokens,
+            )
+        else:
+            _agent_client = BedrockConverseAgentClient(
+                model=model,
+                max_tokens=BEDROCK_LLM_CONFIG.max_tokens,
+            )
     elif (cli_reg := _get_cli_provider_registration(provider)) is not None:
         model_name = os.getenv(cli_reg.model_env_key, "").strip() or None
         _agent_client = CLIBackedAgentClient(cli_reg.adapter_factory(), model=model_name)
@@ -644,11 +767,6 @@ def _create_openai_compat_client(settings: Any, provider: str) -> OpenAIAgentCli
         "gemini": (GEMINI_BASE_URL, "GEMINI_API_KEY", settings.gemini_reasoning_model),
         "nvidia": (NVIDIA_BASE_URL, "NVIDIA_API_KEY", settings.nvidia_reasoning_model),
         "minimax": (MINIMAX_BASE_URL, "MINIMAX_API_KEY", settings.minimax_reasoning_model),
-        "requesty": (
-            "https://router.requesty.ai/v1",
-            "REQUESTY_API_KEY",
-            settings.requesty_reasoning_model,
-        ),
     }
     if provider == "ollama":
         host = settings.ollama_host.rstrip("/")

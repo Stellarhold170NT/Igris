@@ -26,6 +26,7 @@ from app.services.llm_client import LLMResponse
 logger = logging.getLogger(__name__)
 
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
+_REDACTED_PROMPT_ARG = "<redacted-prompt>"
 # Avoid re-running `detect()` (two subprocess probes) on every invoke during long investigations.
 _PROBE_CACHE_TTL_SEC = 45.0
 
@@ -41,6 +42,24 @@ _build_subprocess_env = build_cli_subprocess_env
 
 def _strip_ansi(text: str) -> str:
     return _ANSI_ESCAPE.sub("", text)
+
+
+def _sanitize_argv_for_debug(argv: tuple[str, ...], *, prompt: str) -> list[str]:
+    """Redact prompt text from debug argv logs when passed as a CLI argument."""
+    if not prompt:
+        return list(argv)
+
+    redacted: list[str] = []
+    prompt_equals_form = f"--prompt={prompt}"
+    for arg in argv:
+        if arg == prompt:
+            redacted.append(_REDACTED_PROMPT_ARG)
+            continue
+        if arg == prompt_equals_form:
+            redacted.append(f"--prompt={_REDACTED_PROMPT_ARG}")
+            continue
+        redacted.append(arg)
+    return redacted
 
 
 class CLIBackedLLMClient:
@@ -125,6 +144,13 @@ class CLIBackedLLMClient:
             reasoning_effort=get_active_reasoning_effort(),
         )
         merged_env = _build_subprocess_env(invocation.env)
+        logger.debug(
+            "cli_llm_spawn",
+            extra={
+                "provider": self._adapter.name,
+                "argv": _sanitize_argv_for_debug(invocation.argv, prompt=flat),
+            },
+        )
 
         backoff = _TEMPFAIL_BACKOFF_SEC
         for attempt in range(_TEMPFAIL_MAX_RETRIES + 1):

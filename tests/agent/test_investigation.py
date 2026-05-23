@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+import types
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,6 +10,7 @@ from app.agent.investigation import (
     ConnectedInvestigationAgent,
     _availability_view,
     _build_synthetic_assistant_tool_call_msg,
+    _run_parallel,
 )
 from app.services.agent_llm_client import CLIBackedAgentClient, ToolCall
 
@@ -182,3 +185,60 @@ def test_run_gracefully_handles_single_tool_call_only_model() -> None:
     assert "tool calling" in result["root_cause"].lower()
     assert result["remediation_steps"]
     assert result["causal_chain"]
+
+
+def test_run_parallel_handles_interpreter_shutdown() -> None:
+    """When pool.submit raises RuntimeError (interpreter shutdown), _run_parallel
+    must fall back to sequential execution and still return results for all slots."""
+    mock_tool = MagicMock()
+    mock_tool.name = "good_tool"
+    mock_tool.validate_public_input.return_value = None
+    mock_tool.extract_params.return_value = {}
+    mock_tool.run.return_value = {"result": "ok"}
+
+    tool_calls = [
+        ToolCall(id="tc1", name="good_tool", input={}),
+        ToolCall(id="tc2", name="good_tool", input={}),
+    ]
+
+    shutdown_msg = "cannot schedule new futures after interpreter shutdown"
+
+    with patch("app.agent.investigation.ThreadPoolExecutor") as mock_executor_cls:
+        mock_pool = MagicMock()
+        mock_pool.__enter__ = lambda s: s
+        mock_pool.__exit__ = MagicMock(return_value=False)
+        mock_pool.submit.side_effect = RuntimeError(shutdown_msg)
+        mock_executor_cls.return_value = mock_pool
+
+        results = _run_parallel(tool_calls, [mock_tool], {})
+
+    # The concurrent path raises RuntimeError; fallback sequential execution succeeds
+    assert len(results) == 2
+    assert all(r == {"result": "ok"} for r in results)
+
+
+def test_build_synthetic_assistant_msg_for_bedrock_converse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Seed assistant turn must use Converse toolUse blocks, not plain text fallback."""
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+    monkeypatch.setitem(
+        sys.modules,
+        "boto3",
+        types.SimpleNamespace(
+            client=lambda *_args, **_kwargs: types.SimpleNamespace(converse=lambda **_: {})
+        ),
+    )
+
+    from app.services.agent_llm_client import BedrockConverseAgentClient
+
+    llm = BedrockConverseAgentClient(model="mistral.mistral-large-3-675b-instruct")
+    calls = [
+        ToolCall(id="abc12def3", name="query_logs", input={"query": "error"}),
+    ]
+    msg = _build_synthetic_assistant_tool_call_msg(llm, calls)
+
+    assert msg["role"] == "assistant"
+    assert msg["content"][0]["toolUse"]["toolUseId"] == "abc12def3"
+    assert msg["content"][0]["toolUse"]["name"] == "query_logs"
+    assert "I will start by querying" not in str(msg)

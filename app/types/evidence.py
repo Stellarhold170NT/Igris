@@ -55,4 +55,5 @@ EvidenceSource = Literal[
     "hermes",
     "coral",
     "vauthz",
+    "twilio",
 ]
