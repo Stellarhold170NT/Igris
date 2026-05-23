@@ -170,6 +170,20 @@ def execute_routed_turn(
             on_exit()
         return
 
+    if session.tool_calling:
+        from app.cli.interactive_shell.chat.tool_agent import answer_with_tools
+        with apply_reasoning_effort(session.reasoning_effort):
+            answer_with_tools(text, session, console, confirm_fn=confirm_fn)
+        assistant_text = ""
+        if session.cli_agent_messages and session.cli_agent_messages[-1][0] == "assistant":
+            assistant_text = session.cli_agent_messages[-1][1]
+        if recorder is not None:
+            recorder.set_response(assistant_text)
+            recorder.flush()
+        session.record(kind, text)
+        session.last_assistant_intent = "cli_agent_handled"
+        return
+
     if kind == "cli_help":
         with apply_reasoning_effort(session.reasoning_effort):
             run = answer_cli_help(text, session, console)

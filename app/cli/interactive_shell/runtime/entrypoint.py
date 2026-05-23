@@ -21,9 +21,14 @@ from app.cli.interactive_shell.ui import DIM, render_banner
 log = logging.getLogger(__name__)
 
 
-async def repl_main(initial_input: str | None = None, _config: ReplConfig | None = None) -> int:
+async def repl_main(
+    initial_input: str | None = None,
+    _config: ReplConfig | None = None,
+    tool_calling: bool = False,
+) -> int:
     cfg = _config or ReplConfig.load()
     session = ReplSession()
+    session.tool_calling = tool_calling
     session.task_registry = TaskRegistry.persistent()
     pt_session = _prompt_surface._build_prompt_session()
     session.prompt_history_backend = pt_session.history
@@ -64,12 +69,20 @@ async def repl_main(initial_input: str | None = None, _config: ReplConfig | None
             _alert_inbox.set_current_inbox(None)
 
 
-def run_repl(initial_input: str | None = None, config: ReplConfig | None = None) -> int:
+def run_repl(
+    initial_input: str | None = None,
+    config: ReplConfig | None = None,
+    tool_calling: bool = False,
+) -> int:
     cfg = config or ReplConfig.load()
     if not cfg.enabled:
         return 0
     if not sys.stdin.isatty() and initial_input is None:
         return 0
+
+    if tool_calling:
+        from app.cli.support.output import set_silent_tracker
+        set_silent_tracker()
 
     run_startup_sweep()
 
@@ -83,7 +96,7 @@ def run_repl(initial_input: str | None = None, config: ReplConfig | None = None)
         render_banner(real_console)
 
     try:
-        return asyncio.run(repl_main(initial_input=initial_input, _config=cfg))
+        return asyncio.run(repl_main(initial_input=initial_input, _config=cfg, tool_calling=tool_calling))
     except (EOFError, KeyboardInterrupt):
         return 0
 
