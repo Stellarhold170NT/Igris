@@ -114,6 +114,8 @@ _DEFAULT_ROOT_CAUSE_CATEGORY_INSTRUCTION = (
 
 
 def build_system_prompt(state: dict[str, Any]) -> str:
+    import os
+
     alert_source = _get_alert_source(state)
     root_cause_category_instruction = _DEFAULT_ROOT_CAUSE_CATEGORY_INSTRUCTION
 
@@ -127,9 +129,21 @@ def build_system_prompt(state: dict[str, Any]) -> str:
             f"{taxonomy}"
         )
 
-    return _INVESTIGATION_SYSTEM.format(
+    prompt = _INVESTIGATION_SYSTEM.format(
         root_cause_category_instruction=root_cause_category_instruction
     )
+
+    # Check for target language configuration
+    language = os.getenv("OPENSRE_LANGUAGE", "en").strip().lower()
+    if language in ("vi", "vietnamese"):
+        prompt += (
+            "\n\nIMPORTANT LANGUAGE REQUIREMENT:\n"
+            "You MUST write the final report, including the root cause statement, validated claims, "
+            "non-validated claims, and remediation steps, in Vietnamese. All explanations and instructions "
+            "intended for the end-user must be presented in natural and professional Vietnamese. Do not translate technical terms like PDP, OPA, service names, pod names, or tool names."
+        )
+
+    return prompt
 
 
 def format_alert_context(state: dict[str, Any]) -> str:
@@ -206,6 +220,11 @@ def _build_extra_parts(state: dict[str, Any]) -> list[str]:
         annotations = raw_alert.get("commonAnnotations") or {}
         if isinstance(annotations, dict) and annotations.get("description"):
             parts.append(f"Description: {annotations['description']}")
+        
+        # Support various custom instruction/prompt keys
+        custom_instruction = raw_alert.get("skill") or raw_alert.get("instruction") or raw_alert.get("text")
+        if custom_instruction:
+            parts.append(f"Description: {custom_instruction}")
     elif isinstance(raw_alert, str) and raw_alert.strip():
         parts.append(f"Raw alert:\n{raw_alert[:2000]}")
 

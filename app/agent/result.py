@@ -145,7 +145,19 @@ def _parse_via_structured_output(
 ) -> InvestigationResult:
     from app.services import get_llm_for_reasoning
 
-    prompt = f"""Extract the structured diagnosis from this investigation conclusion.
+    import os
+    language = os.getenv("OPENSRE_LANGUAGE", "en").strip().lower()
+    if language in ("vi", "vietnamese"):
+        prompt = f"""Extract and translate the structured diagnosis from this investigation conclusion to Vietnamese.
+All extracted text fields (root_cause, causal_chain, validated_claims, non_validated_claims, remediation_steps) MUST be written in natural, fluent, and professional Vietnamese. Do not translate technical terms like PDP, OPA, service names, pod names, or tool names.
+
+Investigation conclusion:
+{last_text}
+
+Evidence keys collected: {", ".join(evidence.keys()) if evidence else "none"}
+"""
+    else:
+        prompt = f"""Extract the structured diagnosis from this investigation conclusion.
 
 Investigation conclusion:
 {last_text}

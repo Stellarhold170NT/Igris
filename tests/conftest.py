@@ -14,6 +14,7 @@ _ENV_PATH = _PROJECT_ROOT / ".env"
 def _load_env() -> None:
     if _ENV_PATH.exists():
         load_env(_ENV_PATH, override=True)
+    os.environ["OPENSRE_LANGUAGE"] = "en"
 
 
 def _disable_sentry() -> None:
