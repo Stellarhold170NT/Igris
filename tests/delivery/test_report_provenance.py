@@ -244,3 +244,23 @@ def test_build_slack_blocks_omits_recommended_actions_when_empty() -> None:
 
     header_texts = [b.get("text", {}).get("text", "") for b in blocks if b.get("type") == "header"]
     assert not any("Recommended Actions" in t for t in header_texts)
+
+
+def test_format_chat_response_renders_aligned_markdown_tables() -> None:
+    from app.remote.telegram_bot import _format_chat_response
+
+    input_text = (
+        "Here is the report:\n"
+        "| Trường | Giá trị |\n"
+        "|-------|---------|\n"
+        "| PDP ID | 12345 |\n"
+        "| Name | Thanh niên QĐ |\n\n"
+        "Done."
+    )
+    result = _format_chat_response(input_text)
+    
+    assert "<pre>" in result
+    assert "</pre>" in result
+    assert "| Trường | Giá trị       |" in result
+    assert "| PDP ID | 12345         |" in result
+    assert "| Name   | Thanh niên QĐ |" in result

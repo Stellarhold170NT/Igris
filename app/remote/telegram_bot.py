@@ -99,6 +99,86 @@ def _send_typing(chat_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _format_markdown_tables(text: str) -> str:
+    """Find markdown tables in the text, align their columns, and wrap them in <pre>...</pre>."""
+    lines = text.splitlines()
+    output_lines = []
+    in_table = False
+    table_lines = []
+
+    def flush_table():
+        if not table_lines:
+            return []
+        
+        parsed_rows = []
+        for line in table_lines:
+            stripped = line.strip()
+            if stripped.startswith("|"):
+                stripped = stripped[1:]
+            if stripped.endswith("|"):
+                stripped = stripped[:-1]
+            cells = [c.strip() for c in stripped.split("|")]
+            parsed_rows.append(cells)
+
+        if not parsed_rows:
+            return []
+
+        cols_count = max(len(row) for row in parsed_rows)
+        for row in parsed_rows:
+            while len(row) < cols_count:
+                row.append("")
+
+        is_sep_row = False
+        if len(parsed_rows) > 1:
+            second_row = parsed_rows[1]
+            if all(re.match(r"^:?-+:?$", cell) for cell in second_row if cell):
+                is_sep_row = True
+
+        widths = [0] * cols_count
+        for idx, row in enumerate(parsed_rows):
+            if idx == 1 and is_sep_row:
+                continue
+            for col_idx, cell in enumerate(row):
+                widths[col_idx] = max(widths[col_idx], len(cell))
+
+        formatted_lines = []
+        for idx, row in enumerate(parsed_rows):
+            if idx == 1 and is_sep_row:
+                sep_cells = ["-" * (widths[c_idx] + 2) for c_idx in range(cols_count)]
+                formatted_lines.append("|" + "|".join(sep_cells) + "|")
+            else:
+                formatted_cells = [f" {row[c_idx].ljust(widths[c_idx])} " for c_idx in range(cols_count)]
+                formatted_lines.append("|" + "|".join(formatted_cells) + "|")
+
+        table_text = "\n".join(formatted_lines)
+        return [f"<pre>{table_text}</pre>"]
+
+    for line in lines:
+        stripped = line.strip()
+        is_table_line = (
+            (stripped.startswith("|") and stripped.endswith("|"))
+            or (stripped.count("|") >= 2 and re.match(r"^\|?.*\|.*\|?$", stripped))
+        )
+        
+        if is_table_line:
+            if not in_table:
+                in_table = True
+                table_lines = [line]
+            else:
+                table_lines.append(line)
+        else:
+            if in_table:
+                output_lines.extend(flush_table())
+                table_lines = []
+                in_table = False
+            output_lines.append(line)
+
+    if in_table:
+        output_lines.extend(flush_table())
+
+    return "\n".join(output_lines)
+
+
 def _format_chat_response(text: str) -> str:
     """Convert LLM plain-text response to Telegram HTML.
 
@@ -107,6 +187,7 @@ def _format_chat_response(text: str) -> str:
     """
     # Escape HTML entities first
     s = _html.escape(text)
+    s = _format_markdown_tables(s)
     s = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", s)
     # *italic* → <i>italic</i>  (only single stars not already consumed)
     s = re.sub(r"(?<!\*)\*([^*\n]+?)\*(?!\*)", r"<i>\1</i>", s)
