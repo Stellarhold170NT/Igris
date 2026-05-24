@@ -307,7 +307,11 @@ def generate_report(state: InvestigationState) -> dict:
     # Trello Delivery
     trello_config = _get_trello_config(resolved)
     if trello_config:
-        from app.integrations.trello import create_trello_card
+        from app.integrations.trello import (
+            create_trello_card,
+            get_trello_board_lists,
+            create_trello_list,
+        )
 
         alert_name = state.get("alert_name") or "System Alert"
         severity = state.get("severity") or "warning"
@@ -318,10 +322,29 @@ def generate_report(state: InvestigationState) -> dict:
         card_desc = _slack_to_markdown(masking_ctx.unmask(slack_message))
 
         try:
+            list_id = trello_config.list_id
+            board_id = trello_config.board_id
+            pipeline_name = state.get("pipeline_name") or "General Incidents"
+            if board_id:
+                lists = get_trello_board_lists(config=trello_config, board_id=board_id)
+                matched_list = next(
+                    (lst for lst in lists if lst.get("name", "").strip().lower() == pipeline_name.strip().lower()),
+                    None
+                )
+                if matched_list:
+                    list_id = matched_list["id"]
+                else:
+                    new_list = create_trello_list(config=trello_config, board_id=board_id, name=pipeline_name)
+                    list_id = new_list.get("id")
+
+            if not list_id:
+                raise ValueError("No list_id found and could not resolve one via board_id.")
+
             card = create_trello_card(
                 config=trello_config,
                 name=card_name,
                 desc=card_desc,
+                list_id=list_id,
             )
             logger.info("[publish] Trello card created successfully: %s (ID: %s)", card.get("name"), card.get("id"))
         except Exception as exc:

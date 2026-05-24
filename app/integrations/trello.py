@@ -154,3 +154,42 @@ def create_trello_card(
         },
     )
     return payload if isinstance(payload, dict) else {}
+
+
+def get_trello_board_lists(
+    *,
+    config: TrelloConfig,
+    board_id: str,
+) -> list[dict[str, Any]]:
+    """Get all lists on a Trello board."""
+    target_board_id = board_id.strip()
+    if not target_board_id:
+        raise ValueError("A board_id must be provided.")
+    payload = _request_json(
+        config,
+        "GET",
+        f"/boards/{target_board_id}/lists",
+    )
+    return payload if isinstance(payload, list) else []
+
+
+def create_trello_list(
+    *,
+    config: TrelloConfig,
+    board_id: str,
+    name: str,
+) -> dict[str, Any]:
+    """Create a new list on a Trello board."""
+    target_board_id = board_id.strip()
+    if not target_board_id:
+        raise ValueError("A board_id must be provided.")
+    payload = _request_json(
+        config,
+        "POST",
+        "/lists",
+        params=[
+            ("name", name),
+            ("idBoard", target_board_id),
+        ],
+    )
+    return payload if isinstance(payload, dict) else {}
