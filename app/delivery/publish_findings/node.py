@@ -22,6 +22,26 @@ from app.utils.tracing import traceable
 logger = logging.getLogger(__name__)
 
 
+def _get_trello_config(resolved: dict[str, Any]) -> Any | None:
+    trello_int = resolved.get("trello")
+    if trello_int and isinstance(trello_int, dict):
+        creds = trello_int.get("credentials") or {}
+        if creds.get("api_key") and creds.get("token"):
+            from app.integrations.trello import build_trello_config
+            return build_trello_config(creds)
+
+    from app.integrations.trello import trello_config_from_env
+    return trello_config_from_env()
+
+
+def _slack_to_markdown(text: str) -> str:
+    """Convert Slack-specific link formatting <url|label> to standard Markdown [label](url)."""
+    import re
+    text = re.sub(r"<([^>|]+)\|([^>]+)>", r"[\2](\1)", text)
+    text = re.sub(r"<([^>|]+)>", r"[\1](\1)", text)
+    return text
+
+
 def generate_report(state: InvestigationState) -> dict:
     """Generate and publish the final RCA report."""
     from app.utils.slack_delivery import build_action_blocks, send_slack_report
@@ -284,8 +304,28 @@ def generate_report(state: InvestigationState) -> dict:
         logger.debug("[publish] openclaw delivery: posted=%s error=%s", oc_posted, oc_error)
         if not oc_posted:
             logger.debug("[publish] OpenClaw delivery failed: %s", oc_error)
-    else:
-        logger.debug("[publish] openclaw delivery: no openclaw integration configured")
+    # Trello Delivery
+    trello_config = _get_trello_config(resolved)
+    if trello_config:
+        from app.integrations.trello import create_trello_card
+
+        alert_name = state.get("alert_name") or "System Alert"
+        severity = state.get("severity") or "warning"
+        severity_emoji = "🔴" if severity == "critical" else "⚠️" if severity == "warning" else "ℹ️"
+        category = state.get("root_cause_category") or "Incident"
+        card_name = f"{severity_emoji} [{category}] {alert_name}"
+
+        card_desc = _slack_to_markdown(masking_ctx.unmask(slack_message))
+
+        try:
+            card = create_trello_card(
+                config=trello_config,
+                name=card_name,
+                desc=card_desc,
+            )
+            logger.info("[publish] Trello card created successfully: %s (ID: %s)", card.get("name"), card.get("id"))
+        except Exception as exc:
+            logger.warning("[publish] Failed to create Trello card: %s", exc)
 
     post_gitlab_mr_writeback(state, slack_message)
 
