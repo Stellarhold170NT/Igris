@@ -125,17 +125,8 @@ def dispatch_one_turn(
     confirm_fn: Callable[[str], str] | None = None,
 ) -> None:
     # Resolve skill injections (e.g. @vauthz) in the input text
-    from app.cli.commands.skill import load_skills
-    skills = load_skills()
-    if skills:
-        def replacer(match):
-            skill_name = match.group(1)
-            if skill_name in skills:
-                skill_data = skills[skill_name]
-                prompt = skill_data.get("prompt") if isinstance(skill_data, dict) else skill_data
-                return str(prompt or "")
-            return match.group(0)
-        text = re.sub(r"@([a-zA-Z0-9_-]+)", replacer, text)
+    from app.cli.commands.skill import resolve_skills_in_text
+    text = resolve_skills_in_text(text)
 
     decision = _router.route_input(text, session)
     kind = decision.route_kind.value

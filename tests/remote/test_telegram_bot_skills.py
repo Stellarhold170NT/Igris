@@ -47,8 +47,15 @@ def test_telegram_bot_injects_skill_in_chat() -> None:
 
         _handle_message(message)
 
-        # It should replace @vauthz with the prompt
-        mock_run_chat.assert_called_once_with("12345", "Check all PDPs", reply_to="999")
+        expected = (
+            "=== SRE Skill Guidelines ===\n"
+            "- @vauthz:\n"
+            "Check all PDPs\n"
+            "============================\n\n"
+            "[User Request]\n"
+            "@vauthz"
+        )
+        mock_run_chat.assert_called_once_with("12345", expected, reply_to="999")
 
 
 def test_telegram_bot_injects_skill_in_investigate() -> None:
@@ -68,9 +75,12 @@ def test_telegram_bot_injects_skill_in_investigate() -> None:
 
         _handle_message(message)
 
-        # It should replace @vauthz with the prompt
-        mock_run_investigation.assert_called_once_with(
-            "12345",
-            "Check all PDPs and tell me results",
-            reply_to="999"
+        expected = (
+            "=== SRE Skill Guidelines ===\n"
+            "- @vauthz:\n"
+            "Check all PDPs\n"
+            "============================\n\n"
+            "[User Request]\n"
+            "@vauthz and tell me results"
         )
+        mock_run_investigation.assert_called_once_with("12345", expected, reply_to="999")

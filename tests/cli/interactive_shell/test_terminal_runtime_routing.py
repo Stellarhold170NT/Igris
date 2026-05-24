@@ -341,4 +341,12 @@ def test_dispatch_one_turn_injects_skill_prompt(monkeypatch: pytest.MonkeyPatch)
     with patch("app.cli.commands.skill.load_skills", return_value=mock_skills):
         loop_dispatch.dispatch_one_turn("hello @testskill", session, console, on_exit=lambda: None)
 
-    assert routed_texts == ["hello investigate memory leak"]
+    expected = (
+        "=== SRE Skill Guidelines ===\n"
+        "- @testskill:\n"
+        "investigate memory leak\n"
+        "============================\n\n"
+        "[User Request]\n"
+        "hello @testskill"
+    )
+    assert routed_texts == [expected]

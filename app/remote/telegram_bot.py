@@ -441,17 +441,6 @@ def _handle_message(message: dict[str, Any]) -> None:
         _send_message(chat_id, "\n".join(lines), reply_to=message_id, parse_mode="HTML")
         return
 
-    # Replace any @skill_name with its prompt content
-    if skills:
-        def replacer(match):
-            skill_name = match.group(1)
-            if skill_name in skills:
-                skill_data = skills[skill_name]
-                prompt = skill_data.get("prompt") if isinstance(skill_data, dict) else skill_data
-                return str(prompt or "")
-            return match.group(0)
-
-        text = re.sub(r"@([a-zA-Z0-9_-]+)", replacer, text)
     # ----------------------------------------------------
 
     if text.startswith("/help"):
@@ -459,9 +448,10 @@ def _handle_message(message: dict[str, Any]) -> None:
         return
 
     if text.startswith("/investigate"):
-        alert_text = text.removeprefix("/investigate").strip()
+        cmd_len = len("/investigate")
+        alert_text = text[cmd_len:].strip()
         # Handle bot username suffix like /investigate@MyBot
-        if alert_text.startswith("@"):
+        if alert_text.startswith("@") and not text[cmd_len].isspace():
             alert_text = alert_text.split(" ", 1)[-1].strip() if " " in alert_text else ""
         if not alert_text:
             _send_message(
@@ -471,12 +461,15 @@ def _handle_message(message: dict[str, Any]) -> None:
                 parse_mode="HTML",
             )
             return
+        from app.cli.commands.skill import resolve_skills_in_text
+        alert_text = resolve_skills_in_text(alert_text)
         _run_investigation(chat_id, alert_text, reply_to=message_id)
         return
 
     if text.startswith("/chat"):
-        user_text = text.removeprefix("/chat").strip()
-        if user_text.startswith("@"):
+        cmd_len = len("/chat")
+        user_text = text[cmd_len:].strip()
+        if user_text.startswith("@") and not text[cmd_len].isspace():
             user_text = user_text.split(" ", 1)[-1].strip() if " " in user_text else ""
         if not user_text:
             _send_message(
@@ -486,6 +479,8 @@ def _handle_message(message: dict[str, Any]) -> None:
                 parse_mode="HTML",
             )
             return
+        from app.cli.commands.skill import resolve_skills_in_text
+        user_text = resolve_skills_in_text(user_text)
         _run_react_chat(chat_id, user_text, reply_to=message_id)
         return
 
@@ -498,6 +493,8 @@ def _handle_message(message: dict[str, Any]) -> None:
         )
         return
 
+    from app.cli.commands.skill import resolve_skills_in_text
+    text = resolve_skills_in_text(text)
     _run_react_chat(chat_id, text, reply_to=message_id)
 
 

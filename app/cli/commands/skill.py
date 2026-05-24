@@ -21,6 +21,34 @@ def load_skills() -> dict:
         return {}
 
 
+def resolve_skills_in_text(text: str) -> str:
+    """Find all @skill mentions in text and append a structured guidelines block if found."""
+    import re
+    skills = load_skills()
+    if not skills:
+        return text
+
+    matches = re.findall(r"@([a-zA-Z0-9_-]+)", text)
+    used_skills = []
+    seen = set()
+    for name in matches:
+        if name in skills and name not in seen:
+            seen.add(name)
+            used_skills.append((name, skills[name]))
+
+    if not used_skills:
+        return text
+
+    guidelines = []
+    guidelines.append("=== SRE Skill Guidelines ===")
+    for name, data in used_skills:
+        prompt = data.get("prompt") if isinstance(data, dict) else data
+        guidelines.append(f"- @{name}:\n{prompt}")
+    guidelines.append("============================")
+
+    return f"{'\n'.join(guidelines)}\n\n[User Request]\n{text}"
+
+
 def save_skills(skills: dict) -> None:
     """Save all registered skills to skills.json."""
     OPENSRE_HOME_DIR.mkdir(parents=True, exist_ok=True)
