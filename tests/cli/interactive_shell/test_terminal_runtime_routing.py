@@ -318,3 +318,27 @@ class TestDispatchSpinnerRouting:
     )
     def test_non_slash_dispatches_show_assistant_spinner(self, text: str) -> None:
         assert loop_dispatch.dispatch_should_show_spinner(text, ReplSession()) is True
+
+
+def test_dispatch_one_turn_injects_skill_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    routed_texts: list[str] = []
+
+    def _route(text: str, _session: ReplSession) -> RouteDecision:
+        routed_texts.append(text)
+        return RouteDecision(RouteKind.SLASH, 0.9, ("help",))
+
+    monkeypatch.setattr(loop_dispatch._router, "route_input", _route)
+    monkeypatch.setattr(loop_execution, "execute_routed_turn", lambda *args, **kwargs: None)
+
+    mock_skills = {
+        "testskill": {"prompt": "investigate memory leak"},
+    }
+
+    session = ReplSession()
+    console = Console(file=io.StringIO(), force_terminal=False, highlight=False)
+
+    from unittest.mock import patch
+    with patch("app.cli.commands.skill.load_skills", return_value=mock_skills):
+        loop_dispatch.dispatch_one_turn("hello @testskill", session, console, on_exit=lambda: None)
+
+    assert routed_texts == ["hello investigate memory leak"]

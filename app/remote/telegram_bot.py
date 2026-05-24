@@ -417,6 +417,43 @@ def _handle_message(message: dict[str, Any]) -> None:
 
     logger.info("[telegram] Message from chat %s: %s", chat_id, text[:100])
 
+    # ----------------------------------------------------
+    # Skill Injection and Suggestions
+    # ----------------------------------------------------
+    from app.cli.commands.skill import load_skills
+    skills = load_skills()
+
+    # List all skills if user types exactly /skills, /skill, or @
+    if text in ("@", "/skills", "/skill"):
+        if not skills:
+            _send_message(
+                chat_id,
+                "💡 <b>No skills registered yet.</b>\nUse <code>opensre skill add &lt;name&gt; &lt;prompt&gt;</code> to add one.",
+                reply_to=message_id,
+                parse_mode="HTML",
+            )
+            return
+        lines = ["💡 <b>Available Skills:</b>"]
+        for name, data in skills.items():
+            prompt = data.get("prompt") if isinstance(data, dict) else data
+            lines.append(f"• <code>@{name}</code> — {prompt[:150]}...")
+        lines.append("\nType <code>@name</code> in your message to inject the skill prompt.")
+        _send_message(chat_id, "\n".join(lines), reply_to=message_id, parse_mode="HTML")
+        return
+
+    # Replace any @skill_name with its prompt content
+    if skills:
+        def replacer(match):
+            skill_name = match.group(1)
+            if skill_name in skills:
+                skill_data = skills[skill_name]
+                prompt = skill_data.get("prompt") if isinstance(skill_data, dict) else skill_data
+                return str(prompt or "")
+            return match.group(0)
+
+        text = re.sub(r"@([a-zA-Z0-9_-]+)", replacer, text)
+    # ----------------------------------------------------
+
     if text.startswith("/help"):
         _send_message(chat_id, _HELP_TEXT, reply_to=message_id, parse_mode="HTML")
         return

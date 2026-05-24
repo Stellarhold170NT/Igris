@@ -99,7 +99,23 @@ class ReplInputLexer(Lexer):
     _CMD_STYLE = "class:repl-slash-command"
 
     def lex_document(self, document: Document) -> Callable[[int], StyleAndTextTuples]:
+        import re
         lines = document.lines
+
+        def highlight_skills(text: str) -> StyleAndTextTuples:
+            if not text:
+                return []
+            out: StyleAndTextTuples = []
+            last_idx = 0
+            for m in re.finditer(r"@[a-zA-Z0-9_-]+", text):
+                start, end = m.span()
+                if start > last_idx:
+                    out.append(("", text[last_idx:start]))
+                out.append((self._CMD_STYLE, text[start:end]))
+                last_idx = end
+            if last_idx < len(text):
+                out.append(("", text[last_idx:]))
+            return out
 
         def get_line(lineno: int) -> StyleAndTextTuples:
             try:
@@ -123,7 +139,7 @@ class ReplInputLexer(Lexer):
                     out.append(("", lead))
                 out.append((self._CMD_STYLE, cmd))
                 if rest:
-                    out.append(("", rest))
+                    out.extend(highlight_skills(rest))
                 return out
 
             parts = stripped.split(maxsplit=1)
@@ -135,10 +151,14 @@ class ReplInputLexer(Lexer):
                     bare_line.append(("", lead))
                 bare_line.append((self._CMD_STYLE, first))
                 if tail:
-                    bare_line.append(("", tail))
+                    bare_line.extend(highlight_skills(tail))
                 return bare_line
 
-            return [("", line)]
+            out: StyleAndTextTuples = []
+            if lead:
+                out.append(("", lead))
+            out.extend(highlight_skills(stripped))
+            return out
 
         return get_line
 
@@ -157,6 +177,24 @@ class ShellCompleter(Completer):
     ) -> Iterable[Completion]:
         text = document.text_before_cursor
         if not text:
+            return
+
+        import re
+        # Check if user is typing a skill reference (e.g. @vauthz or just @)
+        match = re.search(r"@([a-zA-Z0-9_-]*)$", text)
+        if match:
+            needle = match.group(1).lower()
+            from app.cli.commands.skill import load_skills
+            skills = load_skills()
+            for name, data in skills.items():
+                if name.lower().startswith(needle):
+                    prompt = data.get("prompt") if isinstance(data, dict) else data
+                    yield Completion(
+                        f"@{name}",
+                        start_position=-len(match.group(0)),
+                        display=f"@{name}",
+                        display_meta=_short_meta(str(prompt or "")),
+                    )
             return
 
         if not text.startswith("/"):
@@ -254,6 +292,17 @@ def _build_prompt_key_bindings() -> KeyBindings:
         if event.data == _SHIFT_ENTER_SEQUENCE:  # type: ignore[attr-defined]
             event.current_buffer.newline(copy_margin=False)  # type: ignore[attr-defined]
             return
+        buff = event.current_buffer  # type: ignore[attr-defined]
+        if buff.complete_state:
+            state = buff.complete_state
+            if state.completions:
+                completion = state.current_completion
+                if completion is None:
+                    completion = state.completions[0]
+                if completion is not None:
+                    buff.apply_completion(completion)
+                    buff.complete_state = None
+                    return
         event.current_buffer.validate_and_handle()  # type: ignore[attr-defined]
 
     @bindings.add("tab")

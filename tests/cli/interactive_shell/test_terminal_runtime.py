@@ -88,6 +88,27 @@ def test_repl_input_lexer_highlights_bare_help_alias() -> None:
     assert ("class:repl-slash-command", "help") in fragments
 
 
+def test_repl_input_lexer_highlights_skills() -> None:
+    lexer = ReplInputLexer()
+    # test bare skill
+    get_line = lexer.lex_document(Document("@vauthz", 7))
+    fragments = get_line(0)
+    assert ("class:repl-slash-command", "@vauthz") in fragments
+
+    # test skill inside slash command rest
+    get_line = lexer.lex_document(Document("/investigate @vauthz error", 26))
+    fragments = get_line(0)
+    assert ("class:repl-slash-command", "/investigate") in fragments
+    assert ("class:repl-slash-command", "@vauthz") in fragments
+
+    # test skill inside random text
+    get_line = lexer.lex_document(Document("check @cpu logic", 16))
+    fragments = get_line(0)
+    assert ("class:repl-slash-command", "@cpu") in fragments
+    assert ("", "check ") in fragments
+    assert ("", " logic") in fragments
+
+
 def test_build_prompt_session_uses_persistent_history(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -196,6 +217,34 @@ def test_shell_completer_filters_by_prefix() -> None:
     assert [completion.text for completion in completions] == ["/list"]
 
 
+def test_shell_completer_suggests_skills() -> None:
+    from unittest.mock import patch
+    mock_skills = {
+        "vauthz": {"prompt": "First check pdps"},
+        "cpu": "High CPU",
+    }
+    with patch("app.cli.commands.skill.load_skills", return_value=mock_skills):
+        # typing '@'
+        completions = list(
+            ShellCompleter().get_completions(
+                Document("check @"),
+                CompleteEvent(text_inserted=True),
+            )
+        )
+        assert len(completions) == 2
+        assert {c.text for c in completions} == {"@vauthz", "@cpu"}
+
+        # typing '@v'
+        completions_prefix = list(
+            ShellCompleter().get_completions(
+                Document("check @v"),
+                CompleteEvent(text_inserted=True),
+            )
+        )
+        assert len(completions_prefix) == 1
+        assert completions_prefix[0].text == "@vauthz"
+
+
 def test_shell_completer_suggests_subcommands_for_list() -> None:
     completions = list(
         ShellCompleter().get_completions(
@@ -276,6 +325,35 @@ def test_completion_includes_tab_navigation() -> None:
     assert (Keys.Up,) in keys
     assert (Keys.Tab,) in keys
     assert (Keys.BackTab,) in keys
+
+
+def test_enter_key_applies_completion_when_menu_open() -> None:
+    from prompt_toolkit.buffer import CompletionState
+    from prompt_toolkit.completion import Completion
+
+    key_bindings = _build_prompt_key_bindings()
+    binding = None
+    for b in key_bindings.bindings:
+        if b.keys == (Keys.ControlM,):
+            binding = b
+            break
+    assert binding is not None
+
+    class FakeEvent:
+        def __init__(self, buffer):
+            self.current_buffer = buffer
+            self.data = ""
+
+    buff = Buffer()
+    buff.insert_text("/mo")
+    c_model = Completion("/model", start_position=-3)
+    buff.complete_state = CompletionState(buff.document, [c_model], 0)
+
+    event = FakeEvent(buff)
+    binding.handler(event)
+
+    assert buff.text == "/model"
+    assert buff.complete_state is None
 
 
 def test_completion_menu_current_item_uses_highlight_style() -> None:

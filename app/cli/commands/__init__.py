@@ -25,6 +25,7 @@ from app.cli.commands.onboard import onboard
 from app.cli.commands.remote import remote
 from app.cli.commands.tests import tests
 from app.cli.commands.watchdog import watchdog_command
+from app.cli.commands.skill import skill_group
 
 _COMMANDS: tuple[click.Command, ...] = (
     investigate_command,
@@ -40,6 +41,7 @@ _COMMANDS: tuple[click.Command, ...] = (
     hermes_command,
     cron_command,
     watchdog_command,
+    skill_group,
     debug_command,
     health_command,
     doctor_command,
