@@ -193,3 +193,20 @@ def create_trello_list(
         ],
     )
     return payload if isinstance(payload, dict) else {}
+
+
+def get_trello_board(
+    *,
+    config: TrelloConfig,
+    board_id: str,
+) -> dict[str, Any]:
+    """Get board details (useful to resolve short board ID to 24-char hex ID)."""
+    target_board_id = board_id.strip()
+    if not target_board_id:
+        raise ValueError("A board_id must be provided.")
+    payload = _request_json(
+        config,
+        "GET",
+        f"/boards/{target_board_id}",
+    )
+    return payload if isinstance(payload, dict) else {}

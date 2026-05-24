@@ -37,6 +37,8 @@ def _get_trello_config(resolved: dict[str, Any]) -> Any | None:
 def _slack_to_markdown(text: str) -> str:
     """Convert Slack-specific link formatting <url|label> to standard Markdown [label](url)."""
     import re
+    # Strip ANSI color and format escape sequences
+    text = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", text)
     text = re.sub(r"<([^>|]+)\|([^>]+)>", r"[\2](\1)", text)
     text = re.sub(r"<([^>|]+)>", r"[\1](\1)", text)
     return text
@@ -326,7 +328,15 @@ def generate_report(state: InvestigationState) -> dict:
             board_id = trello_config.board_id
             pipeline_name = state.get("pipeline_name") or "General Incidents"
             if board_id:
-                lists = get_trello_board_lists(config=trello_config, board_id=board_id)
+                try:
+                    from app.integrations.trello import get_trello_board
+                    board_info = get_trello_board(config=trello_config, board_id=board_id)
+                    long_board_id = board_info.get("id") or board_id
+                except Exception as e:
+                    logger.debug("[publish] Failed to resolve long board ID, using as-is: %s", e)
+                    long_board_id = board_id
+
+                lists = get_trello_board_lists(config=trello_config, board_id=long_board_id)
                 matched_list = next(
                     (lst for lst in lists if lst.get("name", "").strip().lower() == pipeline_name.strip().lower()),
                     None
@@ -334,7 +344,7 @@ def generate_report(state: InvestigationState) -> dict:
                 if matched_list:
                     list_id = matched_list["id"]
                 else:
-                    new_list = create_trello_list(config=trello_config, board_id=board_id, name=pipeline_name)
+                    new_list = create_trello_list(config=trello_config, board_id=long_board_id, name=pipeline_name)
                     list_id = new_list.get("id")
 
             if not list_id:
