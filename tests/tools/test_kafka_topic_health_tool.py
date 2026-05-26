@@ -198,6 +198,16 @@ class TestKafkaTopicHealthRun:
         _, call_kwargs = mock_fn.call_args
         assert call_kwargs.get("limit") == 5
 
+    def test_happy_path_forwards_offset_arg(self) -> None:
+        with patch(
+            "app.tools.KafkaTopicHealthTool.get_topic_health",
+            return_value=_TOPIC_HEALTH_RESPONSE,
+        ) as mock_fn:
+            get_kafka_topic_health(bootstrap_servers="broker1:9092", offset=10)
+
+        _, call_kwargs = mock_fn.call_args
+        assert call_kwargs.get("offset") == 10
+
     def test_happy_path_specific_topic_forwards_topic_arg(self) -> None:
         single_topic_response = {
             "source": "kafka",

@@ -1,6 +1,6 @@
-"""Kafka Consumer Group Tool."""
-
 from typing import Any
+
+from pydantic import BaseModel, Field
 
 from app.integrations.kafka import (
     KafkaConfig,
@@ -9,6 +9,12 @@ from app.integrations.kafka import (
     kafka_is_available,
 )
 from app.tools.tool_decorator import tool
+
+
+class KafkaConsumerGroupLagInput(BaseModel):
+    group_id: str = Field(
+        description="The consumer group ID, or a case-insensitive keyword/substring to search for it (e.g., 'vauthz', 'sync', 'portal').",
+    )
 
 
 @tool(
@@ -21,8 +27,16 @@ from app.tools.tool_decorator import tool
         "Identifying stuck or slow consumers during an incident",
         "Checking consumer group health after a deployment",
     ],
+    input_model=KafkaConsumerGroupLagInput,
     is_available=kafka_is_available,
     extract_params=kafka_extract_params,
+    injected_params=(
+        "bootstrap_servers",
+        "security_protocol",
+        "sasl_mechanism",
+        "sasl_username",
+        "sasl_password",
+    ),
 )
 def get_kafka_consumer_group_lag(
     bootstrap_servers: str,

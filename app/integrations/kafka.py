@@ -72,14 +72,17 @@ def kafka_extract_params(sources: dict[str, dict]) -> dict[str, Any]:
     LLM never needs to supply bootstrap_servers or SASL credentials directly.
     """
     kf = sources.get("kafka", {})
+    cred = kf.get("credentials", {})
     return {
-        "bootstrap_servers": str(kf.get("bootstrap_servers", "")).strip(),
+        "bootstrap_servers": str(kf.get("bootstrap_servers") or cred.get("bootstrap_servers", "")).strip(),
         "security_protocol": str(
-            kf.get("security_protocol") or DEFAULT_KAFKA_SECURITY_PROTOCOL
+            kf.get("security_protocol")
+            or cred.get("security_protocol")
+            or DEFAULT_KAFKA_SECURITY_PROTOCOL
         ).strip(),
-        "sasl_mechanism": str(kf.get("sasl_mechanism", "")).strip(),
-        "sasl_username": str(kf.get("sasl_username", "")).strip(),
-        "sasl_password": str(kf.get("sasl_password", "")).strip(),
+        "sasl_mechanism": str(kf.get("sasl_mechanism") or cred.get("sasl_mechanism", "")).strip(),
+        "sasl_username": str(kf.get("sasl_username") or cred.get("sasl_username", "")).strip(),
+        "sasl_password": str(kf.get("sasl_password") or cred.get("sasl_password", "")).strip(),
     }
 
 
@@ -178,6 +181,7 @@ def get_topic_health(
     config: KafkaConfig,
     topic: str | None = None,
     limit: int | None = None,
+    offset: int = 0,
 ) -> dict[str, Any]:
     """Retrieve topic partition health: offsets, replicas, ISR status.
 
@@ -190,14 +194,17 @@ def get_topic_health(
     effective_limit = min(limit or config.max_results, config.max_results)
     try:
         admin = _get_admin_client(config)
-        if topic:
-            metadata = admin.list_topics(topic=topic, timeout=config.timeout_seconds)
-        else:
-            metadata = admin.list_topics(timeout=config.timeout_seconds)
+        metadata = admin.list_topics(timeout=config.timeout_seconds)
 
         topics: list[dict[str, Any]] = []
-        for tname, tmeta in metadata.topics.items():
+        skipped = 0
+        for tname, tmeta in sorted(metadata.topics.items()):
             if tname.startswith("__"):
+                continue
+            if topic and topic.lower() not in tname.lower():
+                continue
+            if skipped < offset:
+                skipped += 1
                 continue
             if len(topics) >= effective_limit:
                 break
@@ -250,15 +257,52 @@ def get_consumer_group_lag(
 
     try:
         from confluent_kafka import TopicPartition
-        from confluent_kafka.admin import ConsumerGroupTopicPartitions
+        try:
+            from confluent_kafka import ConsumerGroupTopicPartitions
+        except ImportError:
+            from confluent_kafka.admin import ConsumerGroupTopicPartitions
 
         admin = _get_admin_client(config)
         consumer = _get_consumer(config)
 
         try:
+            # List all consumer groups to support case-insensitive substring search (keyword)
+            target_group = group_id
+            try:
+                list_groups_future = admin.list_consumer_groups()
+                list_groups_res = list_groups_future.result()
+                all_groups = [g.group_id for g in list_groups_res.valid] if list_groups_res.valid else []
+                if all_groups:
+                    if group_id in all_groups:
+                        target_group = group_id
+                    else:
+                        matches = [g for g in all_groups if group_id.lower() in g.lower()]
+                        if len(matches) == 1:
+                            target_group = matches[0]
+                        elif len(matches) > 1:
+                            return {
+                                "source": "kafka",
+                                "available": True,
+                                "group_id": group_id,
+                                "multiple_matches": True,
+                                "matched_groups": sorted(matches),
+                                "error": f"Multiple consumer groups matched keyword '{group_id}': {', '.join(sorted(matches))}. Please specify the exact group_id.",
+                            }
+                        else:
+                            return {
+                                "source": "kafka",
+                                "available": True,
+                                "group_id": group_id,
+                                "multiple_matches": False,
+                                "matched_groups": [],
+                                "error": f"No consumer groups matched keyword '{group_id}'. Available groups: {', '.join(sorted(all_groups))}",
+                            }
+            except Exception as list_err:
+                logger.warning("Failed to list consumer groups, using exact group_id: %s", list_err)
+
             # Get committed offsets for the group
             group_offsets = admin.list_consumer_group_offsets(
-                [ConsumerGroupTopicPartitions(group_id)]
+                [ConsumerGroupTopicPartitions(target_group)]
             )
             # Wait for the future to resolve
             group_result = None
@@ -291,7 +335,7 @@ def get_consumer_group_lag(
             return {
                 "source": "kafka",
                 "available": True,
-                "group_id": group_id,
+                "group_id": target_group,
                 "total_lag": total_lag,
                 "partitions": lag_info,
             }

@@ -65,12 +65,14 @@ def answer_with_tools(
     try:
         llm = get_agent_llm()
         resolved = resolve_integrations({"raw_alert": {}})
+        from app.agent.investigation import _availability_view
+        available_sources = _availability_view(resolved)
         all_tools = get_registered_tools("investigation")
 
         tools = []
         for t in all_tools:
             try:
-                if t.is_available(resolved):
+                if t.is_available(available_sources):
                     tools.append(t)
             except Exception:
                 pass

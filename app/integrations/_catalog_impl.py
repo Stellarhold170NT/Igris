@@ -46,6 +46,7 @@ from app.integrations.mysql import build_mysql_config
 from app.integrations.openclaw import build_openclaw_config
 from app.integrations.postgresql import build_postgresql_config
 from app.integrations.rabbitmq import build_rabbitmq_config
+from app.integrations.kafka import kafka_config_from_env
 from app.integrations.rds import (
     DEFAULT_RDS_REGION,
     build_rds_config,
@@ -1885,6 +1886,18 @@ def load_env_integrations() -> list[dict[str, Any]]:
             )
     except Exception:
         logger.debug("Failed to load SigNoz config from env", exc_info=True)
+
+    try:
+        kafka_config = kafka_config_from_env()
+        if kafka_config is not None and kafka_config.is_configured:
+            integrations.append(
+                _active_env_record(
+                    "kafka",
+                    kafka_config.model_dump(exclude={"integration_id"}),
+                )
+            )
+    except Exception:
+        logger.debug("Failed to load Kafka config from env", exc_info=True)
 
     return integrations
 
