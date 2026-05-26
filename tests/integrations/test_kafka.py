@@ -1,5 +1,7 @@
 """Unit tests for the Kafka integration module."""
 
+from unittest.mock import MagicMock, patch
+
 from app.integrations.kafka import (
     KafkaConfig,
     KafkaValidationResult,
@@ -246,4 +248,129 @@ class TestGetConsumerGroupKeywordMatching:
         assert p0["lag"] == 50
         assert p0["consumer_id"] == "consumer-vauthz-31-f02e4d2d"
         assert p0["host"] == "/10.0.0.11"
+
+
+class TestGetTopicConsumers:
+    def test_single_match(self) -> None:
+        from app.integrations.kafka import get_topic_consumers
+
+        config = KafkaConfig(bootstrap_servers="localhost:9092")
+
+        mock_admin = MagicMock()
+        
+        # Mock list_topics
+        mock_metadata = MagicMock()
+        mock_metadata.topics = {"vauthz-topic": MagicMock(), "other-topic": MagicMock()}
+        mock_admin.list_topics.return_value = mock_metadata
+
+        # Mock list_consumer_groups
+        mock_groups_future = MagicMock()
+        mock_groups_res = MagicMock()
+        mock_group_valid = MagicMock()
+        mock_group_valid.group_id = "vauthz-sync"
+        mock_groups_res.valid = [mock_group_valid]
+        mock_groups_future.result.return_value = mock_groups_res
+        mock_admin.list_consumer_groups.return_value = mock_groups_future
+
+        # Mock describe_consumer_groups
+        mock_desc_future = MagicMock()
+        mock_desc_res = MagicMock()
+        mock_desc_res.state = "STABLE"
+
+        mock_member = MagicMock()
+        mock_member.host = "/10.0.0.11"
+        mock_member.member_id = "consumer-vauthz-31-f02e4d2d"
+        mock_tp_assign = MagicMock()
+        mock_tp_assign.topic = "vauthz-topic"
+        mock_tp_assign.partition = 0
+        mock_member.assignment.topic_partitions = [mock_tp_assign]
+
+        mock_desc_res.members = [mock_member]
+        mock_desc_future.result.return_value = mock_desc_res
+        mock_admin.describe_consumer_groups.return_value = {"vauthz-sync": mock_desc_future}
+
+        # Mock list_consumer_group_offsets
+        mock_offsets_future = MagicMock()
+        mock_offsets_res = MagicMock()
+        mock_admin.list_consumer_group_offsets.return_value = {"vauthz-sync": mock_offsets_future}
+
+        mock_tp = MagicMock()
+        mock_tp.topic = "vauthz-topic"
+        mock_tp.partition = 0
+        mock_tp.offset = 100
+        mock_tp.error = None
+
+        mock_offsets_res.topic_partitions = [mock_tp]
+        mock_offsets_future.result.return_value = mock_offsets_res
+
+        mock_consumer = MagicMock()
+        mock_consumer.get_watermark_offsets.return_value = (0, 150)
+
+        with (
+            patch("app.integrations.kafka._get_admin_client", return_value=mock_admin),
+            patch("app.integrations.kafka._get_consumer", return_value=mock_consumer),
+        ):
+            res = get_topic_consumers(config, "vauthz")
+
+        assert res["available"] is True
+        assert res["topic"] == "vauthz-topic"
+        assert len(res["consumers"]) == 1
+        cg = res["consumers"][0]
+        assert cg["group_id"] == "vauthz-sync"
+        assert cg["state"] == "STABLE"
+        assert cg["topic_lag"] == 50
+        assert len(cg["partitions"]) == 1
+        p0 = cg["partitions"][0]
+        assert p0["lag"] == 50
+        assert p0["consumer_id"] == "consumer-vauthz-31-f02e4d2d"
+        assert p0["host"] == "/10.0.0.11"
+
+    def test_multiple_matches(self) -> None:
+        from app.integrations.kafka import get_topic_consumers
+
+        config = KafkaConfig(bootstrap_servers="localhost:9092")
+
+        mock_admin = MagicMock()
+        mock_metadata = MagicMock()
+        mock_metadata.topics = {"vauthz.project.event": MagicMock(), "debezium.vauthz.outbox": MagicMock()}
+        mock_admin.list_topics.return_value = mock_metadata
+
+        mock_consumer = MagicMock()
+
+        with (
+            patch("app.integrations.kafka._get_admin_client", return_value=mock_admin),
+            patch("app.integrations.kafka._get_consumer", return_value=mock_consumer),
+        ):
+            res = get_topic_consumers(config, "vauthz")
+
+        assert res["available"] is True
+        assert res["topic_query"] == "vauthz"
+        assert res["multiple_matches"] is True
+        assert res["matched_topics"] == ["debezium.vauthz.outbox", "vauthz.project.event"]
+        assert "Multiple topics matched" in res["error"]
+
+    def test_no_matches(self) -> None:
+        from app.integrations.kafka import get_topic_consumers
+
+        config = KafkaConfig(bootstrap_servers="localhost:9092")
+
+        mock_admin = MagicMock()
+        mock_metadata = MagicMock()
+        mock_metadata.topics = {"other-topic": MagicMock()}
+        mock_admin.list_topics.return_value = mock_metadata
+
+        mock_consumer = MagicMock()
+
+        with (
+            patch("app.integrations.kafka._get_admin_client", return_value=mock_admin),
+            patch("app.integrations.kafka._get_consumer", return_value=mock_consumer),
+        ):
+            res = get_topic_consumers(config, "vauthz")
+
+        assert res["available"] is True
+        assert res["topic_query"] == "vauthz"
+        assert res["multiple_matches"] is False
+        assert res["matched_topics"] == []
+        assert "No topics matched" in res["error"]
+
 

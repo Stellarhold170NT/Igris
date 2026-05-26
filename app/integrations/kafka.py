@@ -139,7 +139,6 @@ def _get_consumer(config: KafkaConfig) -> Any:
         "enable.auto.commit": False,
         "auto.offset.reset": "latest",
         "socket.timeout.ms": int(config.timeout_seconds * 1000),
-        "request.timeout.ms": int(config.timeout_seconds * 1000),
     }
     if config.sasl_mechanism:
         conf["sasl.mechanism"] = config.sasl_mechanism
@@ -380,5 +379,182 @@ def get_consumer_group(
             logger=logger,
             integration="kafka",
             method="get_consumer_group",
+        )
+        return {"source": "kafka", "available": False, "error": str(err)}
+
+
+def get_topic_consumers(
+    config: KafkaConfig,
+    topic: str,
+) -> dict[str, Any]:
+    """Retrieve all consumer groups and their members consuming from a specific topic."""
+    if not config.is_configured:
+        return {"source": "kafka", "available": False, "error": "Not configured."}
+
+    try:
+        from confluent_kafka import TopicPartition
+        try:
+            from confluent_kafka import ConsumerGroupTopicPartitions
+        except ImportError:
+            from confluent_kafka.admin import ConsumerGroupTopicPartitions
+
+        admin = _get_admin_client(config)
+        consumer = _get_consumer(config)
+
+        try:
+            # 1. List all topics to support fuzzy substring search
+            try:
+                metadata = admin.list_topics(timeout=config.timeout_seconds)
+                all_topics = list(metadata.topics.keys())
+            except Exception as topics_err:
+                logger.warning("Failed to list topics: %s", topics_err)
+                all_topics = []
+
+            # Perform case-insensitive substring search
+            target_topic = topic
+            if all_topics:
+                if topic in all_topics:
+                    target_topic = topic
+                else:
+                    matches = [t for t in all_topics if topic.lower() in t.lower()]
+                    if len(matches) == 1:
+                        target_topic = matches[0]
+                    elif len(matches) > 1:
+                        return {
+                            "source": "kafka",
+                            "available": True,
+                            "topic_query": topic,
+                            "multiple_matches": True,
+                            "matched_topics": sorted(matches),
+                            "error": f"Multiple topics matched keyword '{topic}': {', '.join(sorted(matches))}. Please specify the exact topic name.",
+                        }
+                    else:
+                        return {
+                            "source": "kafka",
+                            "available": True,
+                            "topic_query": topic,
+                            "multiple_matches": False,
+                            "matched_topics": [],
+                            "error": f"No topics matched keyword '{topic}'. Available topics: {', '.join(sorted(all_topics))}",
+                        }
+
+            # 2. List all consumer groups in the cluster
+            try:
+                list_groups_future = admin.list_consumer_groups()
+                list_groups_res = list_groups_future.result()
+                all_groups = [g.group_id for g in list_groups_res.valid] if list_groups_res.valid else []
+            except Exception as list_err:
+                logger.warning("Failed to list consumer groups: %s", list_err)
+                all_groups = []
+
+            if not all_groups:
+                return {
+                    "source": "kafka",
+                    "available": True,
+                    "topic": target_topic,
+                    "consumers": [],
+                }
+
+            consumers_info = []
+            for gid in sorted(all_groups):
+                offsets_res = None
+                try:
+                    offsets_dict = admin.list_consumer_group_offsets(
+                        [ConsumerGroupTopicPartitions(gid)]
+                    )
+                    if gid in offsets_dict:
+                        offsets_res = offsets_dict[gid].result()
+                except Exception as offset_err:
+                    logger.warning("Failed to query offsets for group %s: %s", gid, offset_err)
+
+                has_topic_in_offsets = False
+                if offsets_res and offsets_res.topic_partitions:
+                    for tp in offsets_res.topic_partitions:
+                        if tp.topic == target_topic:
+                            has_topic_in_offsets = True
+                            break
+
+                state = "UNKNOWN"
+                assignment_map = {}
+                has_topic_in_assignments = False
+                try:
+                    describe_future = admin.describe_consumer_groups([gid])
+                    describe_res = describe_future[gid].result()
+                    state = str(describe_res.state) if describe_res.state else "UNKNOWN"
+                    for member in describe_res.members:
+                        host = member.host
+                        member_id = member.member_id
+                        if member.assignment and member.assignment.topic_partitions:
+                            for tp in member.assignment.topic_partitions:
+                                if tp.topic == target_topic:
+                                    has_topic_in_assignments = True
+                                assignment_map[(tp.topic, tp.partition)] = {
+                                    "consumer_id": member_id,
+                                    "host": host
+                                }
+                except Exception:
+                    pass
+
+                if has_topic_in_offsets or has_topic_in_assignments:
+                    partitions_detail = []
+                    topic_lag = 0
+
+                    partitions_to_check = set()
+                    if offsets_res and offsets_res.topic_partitions:
+                        for tp in offsets_res.topic_partitions:
+                            if tp.topic == target_topic:
+                                partitions_to_check.add((tp.partition, tp.offset))
+
+                    assigned_partitions = {p for (t, p) in assignment_map.keys() if t == target_topic}
+                    for p in assigned_partitions:
+                        if not any(part == p for (part, _) in partitions_to_check):
+                            partitions_to_check.add((p, -1))
+
+                    for partition, offset in sorted(partitions_to_check):
+                        try:
+                            lo, hi = consumer.get_watermark_offsets(
+                                TopicPartition(target_topic, partition),
+                                timeout=config.timeout_seconds,
+                            )
+                            committed = offset if offset >= 0 else 0
+                            lag = max(0, hi - committed)
+                        except Exception:
+                            hi = 0
+                            committed = offset if offset >= 0 else 0
+                            lag = 0
+
+                        member_info = assignment_map.get((target_topic, partition), {})
+                        partitions_detail.append({
+                            "partition": partition,
+                            "committed_offset": committed,
+                            "high_watermark": hi,
+                            "lag": lag,
+                            "consumer_id": member_info.get("consumer_id", ""),
+                            "host": member_info.get("host", ""),
+                        })
+                        topic_lag += lag
+
+                    clean_state = state.split(".")[-1] if state else "UNKNOWN"
+                    consumers_info.append({
+                        "group_id": gid,
+                        "state": clean_state,
+                        "topic_lag": topic_lag,
+                        "partitions": partitions_detail,
+                    })
+
+            return {
+                "source": "kafka",
+                "available": True,
+                "topic": target_topic,
+                "consumers": consumers_info,
+            }
+        finally:
+            consumer.close()
+    except Exception as err:
+        report_validation_failure(
+            err,
+            logger=logger,
+            integration="kafka",
+            method="get_topic_consumers",
         )
         return {"source": "kafka", "available": False, "error": str(err)}

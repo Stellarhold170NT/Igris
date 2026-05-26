@@ -864,6 +864,7 @@ _TOOLS_WITHOUT_DELIBERATE_CATCH: frozenset[str] = frozenset(
         "get_hermes_session_topology",
         "get_host_metrics",
         "get_kafka_consumer_group",
+        "get_kafka_topic_consumers",
         "get_kafka_topic_health",
         "get_lambda_configuration",
         "get_lambda_errors",
