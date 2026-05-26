@@ -329,30 +329,46 @@ def get_consumer_group(
 
             # Group partition details by topic
             topics_data = {}
+            all_tps = []
+            seen_tps = set()
+
             for tp in group_result.topic_partitions if group_result else []:
                 if tp.error:
                     continue
+                all_tps.append((tp.topic, tp.partition, tp.offset))
+                seen_tps.add((tp.topic, tp.partition))
+
+            for (topic, partition), member_info in assignment_map.items():
+                if (topic, partition) not in seen_tps:
+                    all_tps.append((topic, partition, -1))
+
+            for topic, partition, offset in sorted(all_tps, key=lambda x: (x[0], x[1])):
                 # Get high watermark for this partition
-                lo, hi = consumer.get_watermark_offsets(
-                    TopicPartition(tp.topic, tp.partition),
-                    timeout=config.timeout_seconds,
-                )
-                committed = tp.offset if tp.offset >= 0 else 0
-                lag = max(0, hi - committed)
+                try:
+                    lo, hi = consumer.get_watermark_offsets(
+                        TopicPartition(topic, partition),
+                        timeout=config.timeout_seconds,
+                    )
+                    committed = offset if offset >= 0 else 0
+                    lag = max(0, hi - committed)
+                except Exception:
+                    hi = 0
+                    committed = offset if offset >= 0 else 0
+                    lag = 0
 
                 # Retrieve member info if assigned
-                member_info = assignment_map.get((tp.topic, tp.partition), {})
+                member_info = assignment_map.get((topic, partition), {})
 
-                if tp.topic not in topics_data:
-                    topics_data[tp.topic] = {
+                if topic not in topics_data:
+                    topics_data[topic] = {
                         "topic_lag": 0,
                         "partitions": [],
                     }
 
-                topics_data[tp.topic]["topic_lag"] += lag
-                topics_data[tp.topic]["partitions"].append(
+                topics_data[topic]["topic_lag"] += lag
+                topics_data[topic]["partitions"].append(
                     {
-                        "partition": tp.partition,
+                        "partition": partition,
                         "committed_offset": committed,
                         "high_watermark": hi,
                         "lag": lag,
