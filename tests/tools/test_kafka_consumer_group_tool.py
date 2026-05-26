@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 import pytest
 
-from app.tools.KafkaConsumerGroupTool import get_kafka_consumer_group_lag
+from app.tools.KafkaConsumerGroupTool import get_kafka_consumer_group
 from tests.tools.conftest import BaseToolContract
 
 # ---------------------------------------------------------------------------
@@ -37,6 +37,7 @@ _CONSUMER_GROUP_LAG_RESPONSE = {
     "source": "kafka",
     "available": True,
     "group_id": "payments-consumer",
+    "state": "STABLE",
     "total_lag": 1500,
     "partitions": [
         {
@@ -45,6 +46,8 @@ _CONSUMER_GROUP_LAG_RESPONSE = {
             "committed_offset": 8500,
             "high_watermark": 9200,
             "lag": 700,
+            "consumer_id": "consumer-1",
+            "host": "/10.0.0.1",
         },
         {
             "topic": "payments",
@@ -52,6 +55,8 @@ _CONSUMER_GROUP_LAG_RESPONSE = {
             "committed_offset": 7800,
             "high_watermark": 8600,
             "lag": 800,
+            "consumer_id": "consumer-2",
+            "host": "/10.0.0.2",
         },
     ],
 }
@@ -60,6 +65,7 @@ _CONSUMER_GROUP_ZERO_LAG_RESPONSE = {
     "source": "kafka",
     "available": True,
     "group_id": "events-consumer",
+    "state": "STABLE",
     "total_lag": 0,
     "partitions": [
         {
@@ -68,6 +74,8 @@ _CONSUMER_GROUP_ZERO_LAG_RESPONSE = {
             "committed_offset": 5000,
             "high_watermark": 5000,
             "lag": 0,
+            "consumer_id": "consumer-3",
+            "host": "/10.0.0.3",
         },
     ],
 }
@@ -80,12 +88,12 @@ _CONSUMER_GROUP_ZERO_LAG_RESPONSE = {
 
 class TestKafkaConsumerGroupToolContract(BaseToolContract):
     def get_tool_under_test(self):
-        return get_kafka_consumer_group_lag.__opensre_registered_tool__
+        return get_kafka_consumer_group.__opensre_registered_tool__
 
 
 def test_metadata() -> None:
-    rt = get_kafka_consumer_group_lag.__opensre_registered_tool__
-    assert rt.name == "get_kafka_consumer_group_lag"
+    rt = get_kafka_consumer_group.__opensre_registered_tool__
+    assert rt.name == "get_kafka_consumer_group"
     assert rt.source == "kafka"
     assert "investigation" in rt.surfaces
     assert "chat" in rt.surfaces
@@ -98,7 +106,7 @@ def test_metadata() -> None:
 
 class TestKafkaConsumerGroupIsAvailable:
     def _rt(self):
-        return get_kafka_consumer_group_lag.__opensre_registered_tool__
+        return get_kafka_consumer_group.__opensre_registered_tool__
 
     def test_true_when_connection_verified(self) -> None:
         assert self._rt().is_available({"kafka": {"connection_verified": True}}) is True
@@ -123,7 +131,7 @@ class TestKafkaConsumerGroupIsAvailable:
 
 class TestKafkaConsumerGroupExtractParams:
     def _rt(self):
-        return get_kafka_consumer_group_lag.__opensre_registered_tool__
+        return get_kafka_consumer_group.__opensre_registered_tool__
 
     def test_extracts_all_connection_fields(self) -> None:
         params = self._rt().extract_params(_KAFKA_SOURCES)
@@ -156,40 +164,49 @@ class TestKafkaConsumerGroupExtractParams:
 class TestKafkaConsumerGroupRun:
     def test_happy_path_returns_total_lag(self) -> None:
         with patch(
-            "app.tools.KafkaConsumerGroupTool.get_consumer_group_lag",
+            "app.tools.KafkaConsumerGroupTool.get_consumer_group",
             return_value=_CONSUMER_GROUP_LAG_RESPONSE,
         ):
-            result = get_kafka_consumer_group_lag(
+            result = get_kafka_consumer_group(
                 bootstrap_servers="broker1:9092",
                 group_id="payments-consumer",
             )
 
         assert result["available"] is True
         assert result["group_id"] == "payments-consumer"
+        assert result["state"] == "STABLE"
         assert result["total_lag"] == 1500
         assert result["source"] == "kafka"
 
     def test_happy_path_partition_level_lag_detail(self) -> None:
         with patch(
-            "app.tools.KafkaConsumerGroupTool.get_consumer_group_lag",
+            "app.tools.KafkaConsumerGroupTool.get_consumer_group",
             return_value=_CONSUMER_GROUP_LAG_RESPONSE,
         ):
-            result = get_kafka_consumer_group_lag(
+            result = get_kafka_consumer_group(
                 bootstrap_servers="broker1:9092",
                 group_id="payments-consumer",
             )
 
         assert len(result["partitions"]) == 2
-        lags = {p["partition"]: p["lag"] for p in result["partitions"]}
-        assert lags[0] == 700
-        assert lags[1] == 800
+        p0 = result["partitions"][0]
+        assert p0["partition"] == 0
+        assert p0["lag"] == 700
+        assert p0["consumer_id"] == "consumer-1"
+        assert p0["host"] == "/10.0.0.1"
+
+        p1 = result["partitions"][1]
+        assert p1["partition"] == 1
+        assert p1["lag"] == 800
+        assert p1["consumer_id"] == "consumer-2"
+        assert p1["host"] == "/10.0.0.2"
 
     def test_happy_path_zero_lag_healthy_group(self) -> None:
         with patch(
-            "app.tools.KafkaConsumerGroupTool.get_consumer_group_lag",
+            "app.tools.KafkaConsumerGroupTool.get_consumer_group",
             return_value=_CONSUMER_GROUP_ZERO_LAG_RESPONSE,
         ):
-            result = get_kafka_consumer_group_lag(
+            result = get_kafka_consumer_group(
                 bootstrap_servers="broker1:9092",
                 group_id="events-consumer",
             )
@@ -203,10 +220,10 @@ class TestKafkaConsumerGroupRun:
 
     def test_happy_path_forwards_group_id_to_integration(self) -> None:
         with patch(
-            "app.tools.KafkaConsumerGroupTool.get_consumer_group_lag",
+            "app.tools.KafkaConsumerGroupTool.get_consumer_group",
             return_value=_CONSUMER_GROUP_ZERO_LAG_RESPONSE,
         ) as mock_fn:
-            get_kafka_consumer_group_lag(
+            get_kafka_consumer_group(
                 bootstrap_servers="broker1:9092",
                 group_id="events-consumer",
             )
@@ -216,10 +233,10 @@ class TestKafkaConsumerGroupRun:
 
     def test_happy_path_sasl_ssl_connection(self) -> None:
         with patch(
-            "app.tools.KafkaConsumerGroupTool.get_consumer_group_lag",
+            "app.tools.KafkaConsumerGroupTool.get_consumer_group",
             return_value=_CONSUMER_GROUP_LAG_RESPONSE,
         ) as mock_fn:
-            result = get_kafka_consumer_group_lag(
+            result = get_kafka_consumer_group(
                 bootstrap_servers="broker1:9093",
                 group_id="payments-consumer",
                 security_protocol="SASL_SSL",
@@ -247,9 +264,9 @@ class TestKafkaConsumerGroupRun:
             "error": "Group 'stale-consumer' does not exist.",
         }
         with patch(
-            "app.tools.KafkaConsumerGroupTool.get_consumer_group_lag", return_value=fake_error
+            "app.tools.KafkaConsumerGroupTool.get_consumer_group", return_value=fake_error
         ):
-            result = get_kafka_consumer_group_lag(
+            result = get_kafka_consumer_group(
                 bootstrap_servers="broker1:9092",
                 group_id="stale-consumer",
             )
@@ -263,12 +280,12 @@ class TestKafkaConsumerGroupRun:
         # the tool should let the exception propagate (no silent swallowing).
         with (
             patch(
-                "app.tools.KafkaConsumerGroupTool.get_consumer_group_lag",
+                "app.tools.KafkaConsumerGroupTool.get_consumer_group",
                 side_effect=RuntimeError("consumer group timeout"),
             ),
             pytest.raises(RuntimeError, match="consumer group timeout"),
         ):
-            get_kafka_consumer_group_lag(
+            get_kafka_consumer_group(
                 bootstrap_servers="broker1:9092",
                 group_id="payments-consumer",
             )
@@ -277,12 +294,12 @@ class TestKafkaConsumerGroupRun:
         # Empty bootstrap_servers → KafkaConfig.is_configured is False.
         # The integration short-circuits before touching confluent_kafka.
         with patch(
-            "app.tools.KafkaConsumerGroupTool.get_consumer_group_lag",
+            "app.tools.KafkaConsumerGroupTool.get_consumer_group",
             wraps=__import__(
-                "app.integrations.kafka", fromlist=["get_consumer_group_lag"]
-            ).get_consumer_group_lag,
+                "app.integrations.kafka", fromlist=["get_consumer_group"]
+            ).get_consumer_group,
         ) as mock_fn:
-            result = get_kafka_consumer_group_lag(
+            result = get_kafka_consumer_group(
                 bootstrap_servers="",
                 group_id="payments-consumer",
             )

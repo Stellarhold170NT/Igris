@@ -4,30 +4,30 @@ from pydantic import BaseModel, Field
 
 from app.integrations.kafka import (
     KafkaConfig,
-    get_consumer_group_lag,
+    get_consumer_group,
     kafka_extract_params,
     kafka_is_available,
 )
 from app.tools.tool_decorator import tool
 
 
-class KafkaConsumerGroupLagInput(BaseModel):
+class KafkaConsumerGroupInput(BaseModel):
     group_id: str = Field(
         description="The consumer group ID, or a case-insensitive keyword/substring to search for it (e.g., 'vauthz', 'sync', 'portal').",
     )
 
 
 @tool(
-    name="get_kafka_consumer_group_lag",
-    description="Retrieve consumer group lag per partition from a Kafka cluster, showing committed offsets versus high watermarks.",
+    name="get_kafka_consumer_group",
+    description="Retrieve consumer group metadata, lag, and active instance assignments (including Partition, Consumer ID, and Host IP) from a Kafka cluster.",
     source="kafka",
     surfaces=("investigation", "chat"),
     use_cases=[
         "Diagnosing consumer lag causing processing delays",
         "Identifying stuck or slow consumers during an incident",
-        "Checking consumer group health after a deployment",
+        "Checking consumer group health, active members, and Host IPs after a deployment",
     ],
-    input_model=KafkaConsumerGroupLagInput,
+    input_model=KafkaConsumerGroupInput,
     is_available=kafka_is_available,
     extract_params=kafka_extract_params,
     injected_params=(
@@ -38,7 +38,7 @@ class KafkaConsumerGroupLagInput(BaseModel):
         "sasl_password",
     ),
 )
-def get_kafka_consumer_group_lag(
+def get_kafka_consumer_group(
     bootstrap_servers: str,
     group_id: str,
     security_protocol: str = "PLAINTEXT",
@@ -46,7 +46,7 @@ def get_kafka_consumer_group_lag(
     sasl_username: str = "",
     sasl_password: str = "",
 ) -> dict[str, Any]:
-    """Fetch consumer group lag from a Kafka cluster."""
+    """Fetch consumer group information from a Kafka cluster."""
     config = KafkaConfig(
         bootstrap_servers=bootstrap_servers,
         security_protocol=security_protocol,
@@ -54,4 +54,4 @@ def get_kafka_consumer_group_lag(
         sasl_username=sasl_username,
         sasl_password=sasl_password,
     )
-    return get_consumer_group_lag(config, group_id=group_id)
+    return get_consumer_group(config, group_id=group_id)

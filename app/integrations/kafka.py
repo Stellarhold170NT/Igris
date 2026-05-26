@@ -244,11 +244,11 @@ def get_topic_health(
         return {"source": "kafka", "available": False, "error": str(err)}
 
 
-def get_consumer_group_lag(
+def get_consumer_group(
     config: KafkaConfig,
     group_id: str,
 ) -> dict[str, Any]:
-    """Retrieve consumer group lag per partition.
+    """Retrieve consumer group information, including lag, consumer id, host per partition.
 
     Read-only: queries committed offsets and compares to high watermarks.
     """
@@ -300,6 +300,25 @@ def get_consumer_group_lag(
             except Exception as list_err:
                 logger.warning("Failed to list consumer groups, using exact group_id: %s", list_err)
 
+            # Call describe_consumer_groups to get consumer id and host per partition
+            state = "UNKNOWN"
+            assignment_map = {}
+            try:
+                describe_future = admin.describe_consumer_groups([target_group])
+                describe_res = describe_future[target_group].result()
+                state = str(describe_res.state) if describe_res.state else "UNKNOWN"
+                for member in describe_res.members:
+                    host = member.host
+                    member_id = member.member_id
+                    if member.assignment and member.assignment.topic_partitions:
+                        for tp in member.assignment.topic_partitions:
+                            assignment_map[(tp.topic, tp.partition)] = {
+                                "consumer_id": member_id,
+                                "host": host
+                            }
+            except Exception as desc_err:
+                logger.warning("Failed to describe consumer group members: %s", desc_err)
+
             # Get committed offsets for the group
             group_offsets = admin.list_consumer_group_offsets(
                 [ConsumerGroupTopicPartitions(target_group)]
@@ -321,6 +340,10 @@ def get_consumer_group_lag(
                 )
                 committed = tp.offset if tp.offset >= 0 else 0
                 lag = max(0, hi - committed)
+
+                # Retrieve member info if assigned
+                member_info = assignment_map.get((tp.topic, tp.partition), {})
+
                 lag_info.append(
                     {
                         "topic": tp.topic,
@@ -328,6 +351,8 @@ def get_consumer_group_lag(
                         "committed_offset": committed,
                         "high_watermark": hi,
                         "lag": lag,
+                        "consumer_id": member_info.get("consumer_id", ""),
+                        "host": member_info.get("host", ""),
                     }
                 )
 
@@ -336,6 +361,7 @@ def get_consumer_group_lag(
                 "source": "kafka",
                 "available": True,
                 "group_id": target_group,
+                "state": state,
                 "total_lag": total_lag,
                 "partitions": lag_info,
             }
@@ -346,6 +372,6 @@ def get_consumer_group_lag(
             err,
             logger=logger,
             integration="kafka",
-            method="get_consumer_group_lag",
+            method="get_consumer_group",
         )
         return {"source": "kafka", "available": False, "error": str(err)}

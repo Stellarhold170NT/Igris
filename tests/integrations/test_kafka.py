@@ -139,12 +139,12 @@ def test_load_env_integrations_loads_kafka() -> None:
         os.environ.pop("KAFKA_SECURITY_PROTOCOL", None)
 
 
-class TestGetConsumerGroupLagKeywordMatching:
+class TestGetConsumerGroupKeywordMatching:
     """Tests for consumer group keyword/substring matching logic."""
 
     def test_multiple_matches(self) -> None:
         from unittest.mock import MagicMock, patch
-        from app.integrations.kafka import get_consumer_group_lag
+        from app.integrations.kafka import get_consumer_group
 
         config = KafkaConfig(bootstrap_servers="localhost:9092")
         mock_admin = MagicMock()
@@ -169,7 +169,7 @@ class TestGetConsumerGroupLagKeywordMatching:
             patch("app.integrations.kafka._get_admin_client", return_value=mock_admin),
             patch("app.integrations.kafka._get_consumer", return_value=mock_consumer),
         ):
-            res = get_consumer_group_lag(config, "vauthz")
+            res = get_consumer_group(config, "vauthz")
 
         assert res["available"] is True
         assert res["multiple_matches"] is True
@@ -178,7 +178,7 @@ class TestGetConsumerGroupLagKeywordMatching:
 
     def test_single_match(self) -> None:
         from unittest.mock import MagicMock, patch
-        from app.integrations.kafka import get_consumer_group_lag
+        from app.integrations.kafka import get_consumer_group
 
         config = KafkaConfig(bootstrap_servers="localhost:9092")
         mock_admin = MagicMock()
@@ -193,6 +193,23 @@ class TestGetConsumerGroupLagKeywordMatching:
         mock_res.valid = [mock_listing_1, mock_listing_2]
         mock_future.result.return_value = mock_res
         mock_admin.list_consumer_groups.return_value = mock_future
+
+        # Mock describe_consumer_groups
+        mock_desc_future = MagicMock()
+        mock_desc_res = MagicMock()
+        mock_desc_res.state = "STABLE"
+
+        mock_member = MagicMock()
+        mock_member.host = "/10.0.0.11"
+        mock_member.member_id = "consumer-vauthz-31-f02e4d2d"
+        mock_tp_assign = MagicMock()
+        mock_tp_assign.topic = "vauthz-topic"
+        mock_tp_assign.partition = 0
+        mock_member.assignment.topic_partitions = [mock_tp_assign]
+
+        mock_desc_res.members = [mock_member]
+        mock_desc_future.result.return_value = mock_desc_res
+        mock_admin.describe_consumer_groups.return_value = {"vauthz-sync": mock_desc_future}
 
         # Mock list_consumer_group_offsets to return a future
         mock_offsets_future = MagicMock()
@@ -215,11 +232,14 @@ class TestGetConsumerGroupLagKeywordMatching:
             patch("app.integrations.kafka._get_admin_client", return_value=mock_admin),
             patch("app.integrations.kafka._get_consumer", return_value=mock_consumer),
         ):
-            res = get_consumer_group_lag(config, "vauthz")
+            res = get_consumer_group(config, "vauthz")
 
         assert res["available"] is True
         assert res["group_id"] == "vauthz-sync"
+        assert res["state"] == "STABLE"
         assert res["total_lag"] == 50
         assert len(res["partitions"]) == 1
         assert res["partitions"][0]["lag"] == 50
+        assert res["partitions"][0]["consumer_id"] == "consumer-vauthz-31-f02e4d2d"
+        assert res["partitions"][0]["host"] == "/10.0.0.11"
 
