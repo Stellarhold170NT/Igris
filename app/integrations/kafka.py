@@ -328,8 +328,8 @@ def get_consumer_group(
             for group_future in group_offsets.values():
                 group_result = group_future.result()
 
-            # Build partition lag info
-            lag_info = []
+            # Group partition details by topic
+            topics_data = {}
             for tp in group_result.topic_partitions if group_result else []:
                 if tp.error:
                     continue
@@ -344,9 +344,15 @@ def get_consumer_group(
                 # Retrieve member info if assigned
                 member_info = assignment_map.get((tp.topic, tp.partition), {})
 
-                lag_info.append(
+                if tp.topic not in topics_data:
+                    topics_data[tp.topic] = {
+                        "topic_lag": 0,
+                        "partitions": [],
+                    }
+
+                topics_data[tp.topic]["topic_lag"] += lag
+                topics_data[tp.topic]["partitions"].append(
                     {
-                        "topic": tp.topic,
                         "partition": tp.partition,
                         "committed_offset": committed,
                         "high_watermark": hi,
@@ -356,14 +362,15 @@ def get_consumer_group(
                     }
                 )
 
-            total_lag = sum(p["lag"] for p in lag_info)
+            total_lag = sum(t["topic_lag"] for t in topics_data.values())
+            clean_state = state.split(".")[-1] if state else "UNKNOWN"
             return {
                 "source": "kafka",
                 "available": True,
                 "group_id": target_group,
-                "state": state,
+                "state": clean_state,
                 "total_lag": total_lag,
-                "partitions": lag_info,
+                "topics": topics_data,
             }
         finally:
             consumer.close()

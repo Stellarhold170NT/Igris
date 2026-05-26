@@ -39,26 +39,29 @@ _CONSUMER_GROUP_LAG_RESPONSE = {
     "group_id": "payments-consumer",
     "state": "STABLE",
     "total_lag": 1500,
-    "partitions": [
-        {
-            "topic": "payments",
-            "partition": 0,
-            "committed_offset": 8500,
-            "high_watermark": 9200,
-            "lag": 700,
-            "consumer_id": "consumer-1",
-            "host": "/10.0.0.1",
-        },
-        {
-            "topic": "payments",
-            "partition": 1,
-            "committed_offset": 7800,
-            "high_watermark": 8600,
-            "lag": 800,
-            "consumer_id": "consumer-2",
-            "host": "/10.0.0.2",
-        },
-    ],
+    "topics": {
+        "payments": {
+            "topic_lag": 1500,
+            "partitions": [
+                {
+                    "partition": 0,
+                    "committed_offset": 8500,
+                    "high_watermark": 9200,
+                    "lag": 700,
+                    "consumer_id": "consumer-1",
+                    "host": "/10.0.0.1",
+                },
+                {
+                    "partition": 1,
+                    "committed_offset": 7800,
+                    "high_watermark": 8600,
+                    "lag": 800,
+                    "consumer_id": "consumer-2",
+                    "host": "/10.0.0.2",
+                },
+            ],
+        }
+    },
 }
 
 _CONSUMER_GROUP_ZERO_LAG_RESPONSE = {
@@ -67,17 +70,21 @@ _CONSUMER_GROUP_ZERO_LAG_RESPONSE = {
     "group_id": "events-consumer",
     "state": "STABLE",
     "total_lag": 0,
-    "partitions": [
-        {
-            "topic": "events",
-            "partition": 0,
-            "committed_offset": 5000,
-            "high_watermark": 5000,
-            "lag": 0,
-            "consumer_id": "consumer-3",
-            "host": "/10.0.0.3",
-        },
-    ],
+    "topics": {
+        "events": {
+            "topic_lag": 0,
+            "partitions": [
+                {
+                    "partition": 0,
+                    "committed_offset": 5000,
+                    "high_watermark": 5000,
+                    "lag": 0,
+                    "consumer_id": "consumer-3",
+                    "host": "/10.0.0.3",
+                },
+            ],
+        }
+    },
 }
 
 
@@ -188,14 +195,18 @@ class TestKafkaConsumerGroupRun:
                 group_id="payments-consumer",
             )
 
-        assert len(result["partitions"]) == 2
-        p0 = result["partitions"][0]
+        assert "payments" in result["topics"]
+        t_data = result["topics"]["payments"]
+        assert t_data["topic_lag"] == 1500
+        assert len(t_data["partitions"]) == 2
+
+        p0 = t_data["partitions"][0]
         assert p0["partition"] == 0
         assert p0["lag"] == 700
         assert p0["consumer_id"] == "consumer-1"
         assert p0["host"] == "/10.0.0.1"
 
-        p1 = result["partitions"][1]
+        p1 = t_data["partitions"][1]
         assert p1["partition"] == 1
         assert p1["lag"] == 800
         assert p1["consumer_id"] == "consumer-2"
@@ -213,10 +224,10 @@ class TestKafkaConsumerGroupRun:
 
         assert result["available"] is True
         assert result["total_lag"] == 0
-        assert result["partitions"][0]["lag"] == 0
-        assert (
-            result["partitions"][0]["committed_offset"] == result["partitions"][0]["high_watermark"]
-        )
+        assert "events" in result["topics"]
+        p0 = result["topics"]["events"]["partitions"][0]
+        assert p0["lag"] == 0
+        assert p0["committed_offset"] == p0["high_watermark"]
 
     def test_happy_path_forwards_group_id_to_integration(self) -> None:
         with patch(

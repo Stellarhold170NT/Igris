@@ -238,8 +238,12 @@ class TestGetConsumerGroupKeywordMatching:
         assert res["group_id"] == "vauthz-sync"
         assert res["state"] == "STABLE"
         assert res["total_lag"] == 50
-        assert len(res["partitions"]) == 1
-        assert res["partitions"][0]["lag"] == 50
-        assert res["partitions"][0]["consumer_id"] == "consumer-vauthz-31-f02e4d2d"
-        assert res["partitions"][0]["host"] == "/10.0.0.11"
+        assert "vauthz-topic" in res["topics"]
+        t_data = res["topics"]["vauthz-topic"]
+        assert t_data["topic_lag"] == 50
+        assert len(t_data["partitions"]) == 1
+        p0 = t_data["partitions"][0]
+        assert p0["lag"] == 50
+        assert p0["consumer_id"] == "consumer-vauthz-31-f02e4d2d"
+        assert p0["host"] == "/10.0.0.11"
 
