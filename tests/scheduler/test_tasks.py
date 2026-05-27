@@ -211,7 +211,7 @@ class TestMessageBuilders:
         monkeypatch.setattr(
             tasks_mod,
             "_evaluate_notification_condition",
-            lambda report, cond: True,
+            lambda _report, _cond: True,
         )
 
         msg, _ = tasks_mod.build_message(task)
@@ -235,8 +235,46 @@ class TestMessageBuilders:
         monkeypatch.setattr(
             tasks_mod,
             "_evaluate_notification_condition",
-            lambda report, cond: False,
+            lambda _report, _cond: False,
         )
 
         with pytest.raises(SkipDeliveryException, match="Notification policy 'gửi khi có lỗi' not met"):
             tasks_mod.build_message(task)
+
+    def test_custom_investigation_resolves_skills(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verify that skill references are resolved and injected into the investigation payload."""
+        task = ScheduledTask(
+            kind=TaskKind.CUSTOM_INVESTIGATION,
+            cron="0 9 * * *",
+            provider=Provider.TELEGRAM,
+            chat_id="-100",
+            params={"skill": "@test_skill", "other_param": "testing @another_skill"},
+        )
+
+        captured_payload: dict[str, object] = {}
+
+        def _mock_run_investigation(payload: object, **_kwargs: object) -> dict[str, str]:
+            captured_payload.update(payload)  # type: ignore[arg-type]
+            return {"report": "test report"}
+
+        monkeypatch.setattr(
+            "app.pipeline.runners.run_investigation",
+            _mock_run_investigation,
+        )
+
+        # Mock load_skills
+        monkeypatch.setattr(
+            "app.cli.commands.skill.load_skills",
+            lambda: {
+                "test_skill": {"prompt": "This is test skill prompt"},
+                "another_skill": {"prompt": "This is another skill prompt"},
+            },
+        )
+
+        tasks_mod._build_custom_investigation(task)
+        captured_prompt = captured_payload.get("skill")
+        assert captured_prompt
+        assert "This is test skill prompt" in str(captured_prompt)
+        captured_other = captured_payload.get("other_param")
+        assert captured_other
+        assert "This is another skill prompt" in str(captured_other)

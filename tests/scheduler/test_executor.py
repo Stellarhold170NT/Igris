@@ -246,3 +246,39 @@ class TestExecutor:
             parse_mode="HTML"
         )
 
+    def test_trello_delivery_severity_emoji(self) -> None:
+        from app.scheduler.executor import _deliver_trello
+        task = ScheduledTask(
+            id="test_trello_sev",
+            kind=TaskKind.CUSTOM_INVESTIGATION,
+            cron="0 9 * * *",
+            provider=Provider.TELEGRAM,
+            trello_board_id="fake_board",
+            params={"pipeline_name": "my_pipeline"},
+        )
+        resolved_integrations = {
+            "_severity": "critical",
+            "trello": {
+                "credentials": {
+                    "api_key": "fake_api_key",
+                    "token": "fake_token",
+                }
+            }
+        }
+        with (
+            patch("app.integrations.trello.create_trello_card") as mock_create,
+            patch("app.integrations.trello.get_trello_board_lists") as mock_lists,
+            patch("app.integrations.trello.get_trello_board") as mock_board,
+        ):
+            mock_board.return_value = {"id": "fake_board_long"}
+            mock_lists.return_value = [{"id": "fake_list", "name": "my_pipeline"}]
+            mock_create.return_value = {"id": "card_123", "name": "🔴 [custom_investigation] my_pipeline"}
+
+            ok, err = _deliver_trello(task, "Hello World", resolved_integrations)
+
+        assert ok is True
+        mock_create.assert_called_once()
+        called_kwargs = mock_create.call_args[1]
+        assert called_kwargs["name"] == "🔴 [custom_investigation] my_pipeline"
+
+

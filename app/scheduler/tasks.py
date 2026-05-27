@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from app.scheduler.types import ScheduledTask, TaskKind, SkipDeliveryException
+from app.scheduler.types import ScheduledTask, SkipDeliveryException, TaskKind
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +27,9 @@ _CREDENTIAL_KEYS = frozenset({"bot_token", "access_token", "api_key", "webhook_u
 def _evaluate_notification_condition(report_text: str, condition: str) -> bool:
     """Use the reasoning LLM to evaluate if the report text matches SRE's notification condition."""
     try:
-        from app.services import get_llm_for_reasoning
         from pydantic import BaseModel, Field
+
+        from app.services import get_llm_for_reasoning
 
         class DeliveryDecision(BaseModel):
             should_deliver: bool = Field(
@@ -94,7 +96,7 @@ def build_message(task: ScheduledTask) -> tuple[str, dict[str, Any]]:
     builder = builders.get(task.kind)
     if builder is None:
         return f"⚠️ Unknown task kind: {task.kind}", {}
-    
+
     message, resolved = builder(task)
 
     condition = task.params.get("condition")
@@ -130,6 +132,7 @@ def _build_daily_summary(task: ScheduledTask) -> tuple[str, dict[str, Any]]:
         result = run_investigation(alert_payload)
         if result:
             resolved = result.get("resolved_integrations") or {}
+            resolved["_severity"] = result.get("severity") or "healthy"
             if result.get("telegram_message"):
                 resolved["_telegram_message"] = result["telegram_message"]
             if result.get("report"):
@@ -141,6 +144,7 @@ def _build_daily_summary(task: ScheduledTask) -> tuple[str, dict[str, Any]]:
             f"Daily summary failed for task {task.id}. Check logs for details."
         ) from exc
 
+    resolved["_severity"] = "healthy"
     return (
         f"📊 <b>Daily Reliability Summary</b>\n\n"
         f"Period: {window_start.strftime('%Y-%m-%d %H:%M')} → "
@@ -176,6 +180,7 @@ def _build_weekly_audit(task: ScheduledTask) -> tuple[str, dict[str, Any]]:
         result = run_investigation(alert_payload)
         if result:
             resolved = result.get("resolved_integrations") or {}
+            resolved["_severity"] = result.get("severity") or "healthy"
             if result.get("telegram_message"):
                 resolved["_telegram_message"] = result["telegram_message"]
             if result.get("report"):
@@ -186,6 +191,7 @@ def _build_weekly_audit(task: ScheduledTask) -> tuple[str, dict[str, Any]]:
             f"Weekly audit failed for task {task.id}. Check logs for details."
         ) from exc
 
+    resolved["_severity"] = "healthy"
     return (
         f"📋 <b>Weekly Alert Audit</b>\n\n"
         f"Period: {window_start.strftime('%Y-%m-%d')} → "
@@ -214,10 +220,12 @@ def _build_incident_window_replay(task: ScheduledTask) -> tuple[str, dict[str, A
         result = run_investigation(alert_payload)
         if result:
             resolved = result.get("resolved_integrations") or {}
+            resolved["_severity"] = result.get("severity") or "warning"
             if result.get("telegram_message"):
                 resolved["_telegram_message"] = result["telegram_message"]
             if result.get("report"):
                 return str(result["report"]), resolved
+        resolved["_severity"] = "healthy"
         return (
             f"🔄 <b>Incident Window Replay</b>\n\n"
             f"Window: {task.window_hours}h\n"
@@ -252,6 +260,7 @@ def _build_synthetic_run(task: ScheduledTask) -> tuple[str, dict[str, Any]]:
         result = run_investigation(alert_payload)
         if result:
             resolved = result.get("resolved_integrations") or {}
+            resolved["_severity"] = result.get("severity") or "healthy"
             if result.get("telegram_message"):
                 resolved["_telegram_message"] = result["telegram_message"]
             if result.get("report"):
@@ -262,6 +271,7 @@ def _build_synthetic_run(task: ScheduledTask) -> tuple[str, dict[str, Any]]:
             f"Synthetic run failed for task {task.id}. Check logs for details."
         ) from exc
 
+    resolved["_severity"] = "healthy"
     return (
         f"🧪 <b>Synthetic Test Summary</b>\n\n"
         f"Run time: {now.strftime('%Y-%m-%d %H:%M')} UTC\n\n"
@@ -283,6 +293,24 @@ def _build_custom_investigation(task: ScheduledTask) -> tuple[str, dict[str, Any
 
         # Strip credential keys before passing params to the pipeline
         safe_params = {k: v for k, v in task.params.items() if k not in _CREDENTIAL_KEYS}
+
+        # Resolve any skill references in safe_params
+        from app.cli.commands.skill import load_skills, resolve_skills_in_text
+        skills = load_skills()
+        if skills:
+            # First, check if there is a 'skill' parameter that needs direct lookup
+            skill_val = safe_params.get("skill")
+            if isinstance(skill_val, str):
+                skill_name = skill_val.lstrip("@")
+                if skill_name in skills:
+                    skill_data = skills[skill_name]
+                    resolved_prompt = skill_data.get("prompt") if isinstance(skill_data, dict) else skill_data
+                    safe_params["skill"] = resolved_prompt
+
+            # Second, resolve any remaining @skill references in any of the safe_params
+            for k, v in safe_params.items():
+                if isinstance(v, str) and "@" in v:
+                    safe_params[k] = resolve_skills_in_text(v)
         alert_payload = {
             "source": "scheduled_custom",
             "task_id": task.id,
@@ -293,10 +321,12 @@ def _build_custom_investigation(task: ScheduledTask) -> tuple[str, dict[str, Any
         result = run_investigation(alert_payload)
         if result:
             resolved = result.get("resolved_integrations") or {}
+            resolved["_severity"] = result.get("severity") or "warning"
             if result.get("telegram_message"):
                 resolved["_telegram_message"] = result["telegram_message"]
             if result.get("report"):
                 return str(result["report"]), resolved
+        resolved["_severity"] = "healthy"
         return (
             f"🔍 <b>Custom Investigation</b>\n\n"
             f"Task: {task.id}\n"

@@ -96,3 +96,20 @@ def test_run_happy_path() -> None:
         )
     assert result["available"] is True
     assert result["total_series"] == 1
+
+
+def test_run_with_metric_alias() -> None:
+    mock_backend = MagicMock()
+    mock_backend.query_timeseries.return_value = {
+        "data": {"result": [{"metric": {}, "values": [[1000, "42"]]}]}
+    }
+    # Pass 'metric' instead of 'metric_name' and default 'metric_name'
+    result = query_grafana_metrics(
+        metric_name="pipeline_runs_total",
+        metric="node_memory_MemAvailable_bytes",
+        grafana_backend=mock_backend,
+    )
+    assert result["available"] is True
+    assert result["metric_name"] == "node_memory_MemAvailable_bytes"
+    mock_backend.query_timeseries.assert_called_once_with(query="node_memory_MemAvailable_bytes")
+

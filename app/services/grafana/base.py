@@ -292,6 +292,146 @@ class GrafanaClientBase:
             logger.warning("[grafana] Failed to query alert rules: %s", e)
             return []
 
+    def search_dashboards(self, query: str | None = None) -> list[dict[str, Any]]:
+        """Search for dashboards in Grafana."""
+        url = f"{self.instance_url}/api/search"
+        params = {"type": "dash-db"}
+        if query:
+            params["query"] = query
+        try:
+            results = self._make_request(url, params=params)
+            dashboards = []
+            for item in results:
+                dashboards.append({
+                    "uid": item.get("uid", ""),
+                    "title": item.get("title", ""),
+                    "folder_title": item.get("folderTitle", "General"),
+                    "url": item.get("url", ""),
+                })
+            return dashboards
+        except Exception as e:
+            logger.warning("[grafana] Failed to search dashboards: %s", e)
+            return []
+
+    def get_dashboard(self, uid: str) -> dict[str, Any]:
+        """Fetch dashboard JSON model by UID."""
+        url = f"{self.instance_url}/api/dashboards/uid/{uid}"
+        try:
+            return self._make_request(url)
+        except Exception as e:
+            logger.warning("[grafana] Failed to get dashboard %s: %s", uid, e)
+            raise
+
+    def query_prometheus_label_values(self, label: str, match: str | None = None) -> list[str]:
+        """Query Prometheus Mimir datasource for label values."""
+        if not self.mimir_datasource_uid:
+            return []
+        url = self._build_datasource_url(
+            self.mimir_datasource_uid,
+            f"/api/v1/label/{label}/values",
+        )
+        params = {}
+        if match:
+            params["match[]"] = match
+        try:
+            data = self._make_request(url, params=params)
+            return data.get("data", [])
+        except Exception as e:
+            logger.warning("[grafana] Failed to query label values for %s: %s", label, e)
+            if match:
+                try:
+                    series_url = self._build_datasource_url(
+                        self.mimir_datasource_uid,
+                        "/api/v1/series",
+                    )
+                    series_data = self._make_request(series_url, params={"match[]": match})
+                    values = set()
+                    for s in series_data.get("data", []):
+                        if label in s:
+                            values.add(s[label])
+                    return sorted(values)
+                except Exception:
+                    pass
+            return []
+
+    def query_prometheus_series(self, match: str) -> list[dict[str, Any]]:
+        """Query Prometheus Mimir datasource for series metadata."""
+        if not self.mimir_datasource_uid:
+            return []
+        url = self._build_datasource_url(
+            self.mimir_datasource_uid,
+            "/api/v1/series",
+        )
+        try:
+            data = self._make_request(url, params={"match[]": match})
+            return data.get("data", [])
+        except Exception as e:
+            logger.warning("[grafana] Failed to query series metadata for %s: %s", match, e)
+            return []
+
+    def query_mimir_instant(self, query: str) -> dict[str, Any]:
+        """Query Grafana Cloud Mimir using instant query /api/v1/query."""
+        if not self.is_configured:
+            return {"success": False, "error": "Grafana client not configured", "metrics": []}
+        if not self.mimir_datasource_uid:
+            return {"success": False, "error": "Mimir datasource UID not discovered", "metrics": []}
+        url = self._build_datasource_url(
+            self.mimir_datasource_uid,
+            "/api/v1/query",
+        )
+        try:
+            data = self._make_request(url, params={"query": query})
+            result = data.get("data", {}).get("result", [])
+            metrics = []
+            for series in result:
+                metrics.append({
+                    "metric": series.get("metric", {}),
+                    "value": series.get("value", []),
+                })
+            return {"success": True, "metrics": metrics}
+        except Exception as e:
+            return {"success": False, "error": str(e), "metrics": []}
+
+    def query_mimir_range(self, query: str, start: int | float | str, end: int | float | str, step: str | int | None = None) -> dict[str, Any]:
+        """Query Grafana Cloud Mimir using range query /api/v1/query_range."""
+        if not self.is_configured:
+            return {"success": False, "error": "Grafana client not configured", "metrics": []}
+        if not self.mimir_datasource_uid:
+            return {"success": False, "error": "Mimir datasource UID not discovered", "metrics": []}
+        url = self._build_datasource_url(
+            self.mimir_datasource_uid,
+            "/api/v1/query_range",
+        )
+        params: dict[str, Any] = {"query": query, "start": str(start), "end": str(end)}
+        if step:
+            params["step"] = str(step)
+        try:
+            data = self._make_request(url, params=params)
+            result = data.get("data", {}).get("result", [])
+            metrics = []
+            for series in result:
+                metrics.append({
+                    "metric": series.get("metric", {}),
+                    "values": series.get("values", []),
+                })
+            return {"success": True, "metrics": metrics}
+        except Exception as e:
+            return {"success": False, "error": str(e), "metrics": []}
+
+    def get_datasources(self) -> list[dict[str, Any]]:
+        """Get all datasources configured in Grafana."""
+        if not self.instance_url or not self.is_configured:
+            return []
+        url = f"{self.instance_url}/api/datasources"
+        try:
+            res = self._make_request(url)
+            if isinstance(res, list):
+                return res
+            return []
+        except Exception as e:
+            logger.warning("[grafana] Failed to fetch datasources: %s", e)
+            return []
+
     def _get_auth_headers(self) -> dict[str, str]:
         if not self.read_token:
             return {}
@@ -303,12 +443,32 @@ class GrafanaClientBase:
         params: dict[str, str] | None = None,
         timeout: int = 10,
     ) -> dict[str, Any]:
-        response = requests.get(
-            url,
-            headers=self._get_auth_headers(),
-            params=params,
-            timeout=timeout,
-        )
-        response.raise_for_status()
-        result: dict[str, Any] = response.json()
-        return result
+        import time
+        max_retries = 3
+        backoff = 1.0
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(
+                    url,
+                    headers=self._get_auth_headers(),
+                    params=params,
+                    timeout=timeout,
+                )
+                response.raise_for_status()
+                result: dict[str, Any] = response.json()
+                return result
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+                if attempt == max_retries - 1:
+                    logger.warning("[grafana] Request failed after %d attempts: %s", max_retries, e)
+                    raise e
+                logger.info("[grafana] Connection issue, retrying in %.1fs... (%s)", backoff, e)
+                time.sleep(backoff)
+                backoff *= 2
+            except requests.exceptions.HTTPError as e:
+                if response.status_code == 429 and attempt < max_retries - 1:
+                    logger.info("[grafana] Rate limited (429), retrying in %.1fs...", backoff)
+                    time.sleep(backoff)
+                    backoff *= 2
+                    continue
+                raise e
+        return {}

@@ -328,8 +328,21 @@ def generate_report(state: InvestigationState) -> dict:
         )
 
         alert_name = state.get("alert_name") or "System Alert"
-        severity = state.get("severity") or "warning"
-        severity_emoji = "🔴" if severity == "critical" else "⚠️" if severity == "warning" else "ℹ️"
+        severity = (state.get("severity") or "warning").lower()
+        severity_emoji = {
+            "critical": "🔴",
+            "crit": "🔴",
+            "high": "🟠",
+            "error": "🟠",
+            "medium": "🟡",
+            "warning": "🟡",
+            "warn": "🟡",
+            "low": "🟢",
+            "info": "🟢",
+            "none": "⚪",
+            "healthy": "🟢",
+            "normal": "🟢",
+        }.get(severity, "⚠️")
         category = state.get("root_cause_category") or "Incident"
         card_name = f"{severity_emoji} [{category}] {alert_name}"
 

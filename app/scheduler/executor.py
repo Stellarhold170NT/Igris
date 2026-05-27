@@ -224,7 +224,22 @@ def _deliver_trello(
             return False, "Could not resolve or create a list on the Trello board"
 
         # Build card content
-        card_name = f"🔍 [{task.kind.value}] {task.params.get('pipeline_name', task.id)}"
+        severity = (resolved_integrations.get("_severity") or "warning").lower()
+        severity_emoji = {
+            "critical": "🔴",
+            "crit": "🔴",
+            "high": "🟠",
+            "error": "🟠",
+            "medium": "🟡",
+            "warning": "🟡",
+            "warn": "🟡",
+            "low": "🟢",
+            "info": "🟢",
+            "none": "⚪",
+            "healthy": "🟢",
+            "normal": "🟢",
+        }.get(severity, "⚠️")
+        card_name = f"{severity_emoji} [{task.kind.value}] {task.params.get('pipeline_name', task.id)}"
         # Convert HTML to plain text for Trello
         card_desc = _strip_html(message)
 

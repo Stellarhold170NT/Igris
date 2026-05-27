@@ -85,6 +85,9 @@ def query_grafana_metrics(
     **_kwargs: Any,
 ) -> dict:
     """Query Grafana Cloud Mimir for pipeline metrics."""
+    if "metric" in _kwargs and (not metric_name or metric_name == "pipeline_runs_total"):
+        metric_name = _kwargs["metric"]
+
     if grafana_backend is not None:
         raw = grafana_backend.query_timeseries(query=metric_name)
         metrics = raw.get("data", {}).get("result", [])
