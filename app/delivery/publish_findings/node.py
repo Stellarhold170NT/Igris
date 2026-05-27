@@ -71,7 +71,16 @@ def generate_report(state: InvestigationState) -> dict:
     all_blocks = build_slack_blocks(ctx) + build_action_blocks(investigation_url, investigation_id)
     all_blocks = masking_ctx.unmask_value(all_blocks)
     render_report(slack_message, root_cause_category=state.get("root_cause_category"))
-    open_in_editor(slack_message)
+    is_scheduled = False
+    raw_alert = state.get("raw_alert") or {}
+    source = state.get("source") or (raw_alert.get("source") if isinstance(raw_alert, dict) else None)
+    if source and isinstance(source, str) and source.startswith("scheduled_"):
+        is_scheduled = True
+    if state.get("task_id") or (isinstance(raw_alert, dict) and raw_alert.get("task_id")):
+        is_scheduled = True
+
+    if not is_scheduled:
+        open_in_editor(slack_message)
 
     slack_ctx = state.get("slack_context", {})
     thread_ts = slack_ctx.get("thread_ts") or slack_ctx.get("ts")
@@ -88,13 +97,16 @@ def generate_report(state: InvestigationState) -> dict:
         list(discord_creds.keys()) if discord_creds else [],
     )
 
-    report_posted, delivery_error = send_slack_report(
-        slack_message,
-        channel=_channel,
-        thread_ts=thread_ts,
-        access_token=_token,
-        blocks=all_blocks,
-    )
+    if is_scheduled:
+        report_posted, delivery_error = False, "Scheduled runs bypass direct channel publishing"
+    else:
+        report_posted, delivery_error = send_slack_report(
+            slack_message,
+            channel=_channel,
+            thread_ts=thread_ts,
+            access_token=_token,
+            blocks=all_blocks,
+        )
 
     logger.debug(
         "[publish] slack delivery: posted=%s channel=%s thread_ts=%s error=%s",
@@ -107,13 +119,13 @@ def generate_report(state: InvestigationState) -> dict:
         from app.utils.slack_delivery import swap_reaction
 
         swap_reaction("eyes", "clipboard", _channel, _alert_ts, _token)
-    elif thread_ts and not report_posted:
+    elif thread_ts and not report_posted and not is_scheduled:
         raise RuntimeError(
             f"[publish] Slack delivery failed: channel={_channel}, thread_ts={thread_ts}, reason={delivery_error}"
         )
 
     # Discord delivery — uses integration credentials if configured
-    if discord_creds:
+    if discord_creds and not is_scheduled:
         from app.utils.discord_delivery import send_discord_report
 
         discord_ctx = state.get("discord_context") or {}
@@ -147,11 +159,11 @@ def generate_report(state: InvestigationState) -> dict:
                 channel_id,
             )
     else:
-        logger.debug("[publish] discord delivery: no discord integration configured")
+        logger.debug("[publish] discord delivery: no discord integration configured or run is scheduled")
 
     # Telegram delivery — uses integration credentials if configured
     telegram_creds = resolved.get("telegram", {})
-    if telegram_creds:
+    if telegram_creds and not is_scheduled:
         from app.utils.telegram_delivery import send_telegram_report
 
         telegram_ctx = state.get("telegram_context") or {}
@@ -183,11 +195,11 @@ def generate_report(state: InvestigationState) -> dict:
                 chat_id,
             )
     else:
-        logger.debug("[publish] telegram delivery: no telegram integration configured")
+        logger.debug("[publish] telegram delivery: no telegram integration configured or run is scheduled")
 
     # WhatsApp delivery — uses integration credentials if configured
     whatsapp_creds = resolved.get("whatsapp", {})
-    if whatsapp_creds:
+    if whatsapp_creds and not is_scheduled:
         from app.utils.whatsapp_delivery import send_whatsapp_report
 
         _wa_ctx: dict[str, Any] = state.get("whatsapp_context") or {}
@@ -228,12 +240,12 @@ def generate_report(state: InvestigationState) -> dict:
                 bool(to),
             )
     else:
-        logger.debug("[publish] whatsapp delivery: no whatsapp integration configured")
+        logger.debug("[publish] whatsapp delivery: no whatsapp integration configured or run is scheduled")
 
     # Twilio SMS — dispatched independently of the legacy WhatsApp record
     # above. WhatsApp delivery is owned solely by the ``whatsapp`` integration.
     twilio_creds = resolved.get("twilio", {})
-    if twilio_creds:
+    if twilio_creds and not is_scheduled:
         sms_cfg = twilio_creds.get("sms") or {}
         if sms_cfg.get("enabled"):
             from app.utils.twilio_delivery import send_twilio_sms_report
@@ -296,10 +308,10 @@ def generate_report(state: InvestigationState) -> dict:
                     bool(auth_token),
                 )
     else:
-        logger.debug("[publish] twilio delivery: no twilio integration configured")
+        logger.debug("[publish] twilio sms delivery: no twilio integration configured or run is scheduled")
 
     openclaw_creds = resolved.get("openclaw", {})
-    if openclaw_creds:
+    if openclaw_creds and not is_scheduled:
         from app.utils.openclaw_delivery import send_openclaw_report
 
         oc_posted, oc_error = send_openclaw_report(state, slack_message, openclaw_creds)
@@ -308,7 +320,7 @@ def generate_report(state: InvestigationState) -> dict:
             logger.debug("[publish] OpenClaw delivery failed: %s", oc_error)
     # Trello Delivery
     trello_config = _get_trello_config(resolved)
-    if trello_config:
+    if trello_config and not is_scheduled:
         from app.integrations.trello import (
             create_trello_card,
             get_trello_board_lists,
@@ -360,9 +372,14 @@ def generate_report(state: InvestigationState) -> dict:
         except Exception as exc:
             logger.warning("[publish] Failed to create Trello card: %s", exc)
 
-    post_gitlab_mr_writeback(state, slack_message)
+    if not is_scheduled:
+        post_gitlab_mr_writeback(state, slack_message)
 
-    return {"slack_message": slack_message, "report": slack_message}
+    return {
+        "slack_message": slack_message,
+        "report": slack_message,
+        "telegram_message": telegram_message,
+    }
 
 
 @traceable(name="node_publish_findings")

@@ -375,3 +375,76 @@ def test_twilio_sms_skipped_without_recipient(monkeypatch: pytest.MonkeyPatch) -
         )  # type: ignore[arg-type]
 
     mock_sms.assert_not_called()
+
+
+def test_scheduled_run_bypasses_all_external_deliveries(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_generate_report_deps(monkeypatch)
+
+    mock_send_slack = MagicMock(return_value=(False, None))
+    mock_build_action_blocks = MagicMock(return_value=[])
+    mock_discord = MagicMock()
+    mock_telegram = MagicMock()
+    mock_whatsapp = MagicMock()
+    mock_sms = MagicMock()
+    mock_openclaw = MagicMock()
+    mock_post_note = MagicMock()
+    mock_trello = MagicMock()
+
+    state = _make_state(
+        source="scheduled_custom",
+        task_id="task-123",
+        resolved_integrations={
+            "discord": {"bot_token": "bot", "default_channel_id": "chan"},
+            "telegram": {"bot_token": "tg", "default_chat_id": "tg_chat"},
+            "whatsapp": {
+                "account_sid": "AC1",
+                "auth_token": "tok",
+                "from_number": "whatsapp:+1",
+                "default_to": "+2",
+            },
+            "twilio": {
+                "account_sid": "AC1",
+                "auth_token": "tok",
+                "sms": {
+                    "enabled": True,
+                    "from_number": "+1",
+                    "default_to": "+2",
+                },
+            },
+            "openclaw": {
+                "mode": "http",
+                "url": "http://openclaw",
+                "auth_token": "tok",
+            },
+            "trello": {
+                "credentials": {"api_key": "key", "token": "tok"},
+                "board_id": "board",
+                "list_id": "list",
+            },
+        },
+    )
+
+    with (
+        patch("app.utils.slack_delivery.send_slack_report", mock_send_slack),
+        patch("app.utils.slack_delivery.build_action_blocks", mock_build_action_blocks),
+        patch("app.utils.discord_delivery.send_discord_report", mock_discord),
+        patch("app.utils.telegram_delivery.send_telegram_report", mock_telegram),
+        patch("app.utils.whatsapp_delivery.send_whatsapp_report", mock_whatsapp),
+        patch("app.utils.twilio_delivery.send_twilio_sms_report", mock_sms),
+        patch("app.utils.openclaw_delivery.send_openclaw_report", mock_openclaw),
+        patch("app.delivery.publish_findings.gitlab_writeback.post_gitlab_mr_note", mock_post_note),
+        patch("app.integrations.trello.create_trello_card", mock_trello),
+    ):
+        from app.delivery.publish_findings.node import generate_report
+
+        generate_report(state)  # type: ignore[arg-type]
+
+    mock_send_slack.assert_not_called()
+    mock_discord.assert_not_called()
+    mock_telegram.assert_not_called()
+    mock_whatsapp.assert_not_called()
+    mock_sms.assert_not_called()
+    mock_openclaw.assert_not_called()
+    mock_post_note.assert_not_called()
+    mock_trello.assert_not_called()
+

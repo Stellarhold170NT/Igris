@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime, timedelta
 
-from app.scheduler.types import ScheduledTask, TaskKind
+from app.scheduler.types import ScheduledTask, TaskKind, SkipDeliveryException
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +23,66 @@ logger = logging.getLogger(__name__)
 _CREDENTIAL_KEYS = frozenset({"bot_token", "access_token", "api_key", "webhook_url", "secret"})
 
 
-def build_message(task: ScheduledTask) -> str:
+def _evaluate_notification_condition(report_text: str, condition: str) -> bool:
+    """Use the reasoning LLM to evaluate if the report text matches SRE's notification condition."""
+    try:
+        from app.services import get_llm_for_reasoning
+        from pydantic import BaseModel, Field
+
+        class DeliveryDecision(BaseModel):
+            should_deliver: bool = Field(
+                description="True if the report matches the SRE condition/policy, False otherwise."
+            )
+            reason: str = Field(
+                description="Brief explanation of why the report was approved or skipped."
+            )
+
+        llm = get_llm_for_reasoning()
+
+        prompt = (
+            "You are an SRE notification gatekeeper.\n"
+            "An investigation report has been generated. The user has specified a condition/policy (which may be in Vietnamese or English) for sending notifications to external channels.\n\n"
+            f"User Condition:\n\"{condition}\"\n\n"
+            f"Investigation Report:\n{report_text}\n\n"
+            "Guidelines to evaluate the condition:\n"
+            "1. Identify the core intent of the User Condition:\n"
+            "   - 'Always send' / 'Regardless of errors' (Vietnamese words like: 'dù', 'ngay cả khi', 'bất kể', 'luôn gửi', 'dù không có lỗi', 'dù không lỗi', 'dù có hay không'): The user wants to receive this report even if everything is healthy.\n"
+            "   - 'Only send on failure/mismatch' (Vietnamese words like: 'gửi khi có lỗi', 'chỉ khi', 'nếu có lệch', 'khi lệch', 'chỉ khi lệch'): The user ONLY wants to be alerted if something is wrong.\n\n"
+            "2. Analyze the Investigation Report:\n"
+            "   - Does it indicate a failure, synchronization mismatch, lag, or error? (Look for mismatch details, error logs, or connection failures).\n\n"
+            "3. Make the Decision:\n"
+            "   - If the report has failures/mismatches -> set should_deliver to true.\n"
+            "   - If the report indicates everything is healthy/synchronized:\n"
+            "     - If the User Condition specifies sending anyway/regardless/even if healthy (e.g., 'dù không có lỗi') -> set should_deliver to true.\n"
+            "     - If the User Condition restricts notifications to failures only (e.g. only notify on errors) -> set should_deliver to false.\n"
+            "     - If the condition is empty, unclear, or asks for always notifying -> set should_deliver to true."
+        )
+
+
+        decision = (
+            llm.with_structured_output(DeliveryDecision)
+            .with_config(run_name="LLM – Evaluate Scheduler Notification Condition")
+            .invoke(prompt)
+        )
+
+        logger.info(
+            "Notification condition evaluation: should_deliver=%s, reason=%s",
+            decision.should_deliver,
+            decision.reason,
+        )
+        return decision.should_deliver
+    except Exception as exc:
+        logger.warning(
+            "Failed to evaluate notification condition via LLM, defaulting to True: %s", exc
+        )
+        return True
+
+
+def build_message(task: ScheduledTask) -> tuple[str, dict[str, Any]]:
     """Build the report message for a scheduled task based on its kind.
 
-    Returns the formatted message string. Raises RuntimeError on unrecoverable
-    pipeline failures for kinds that invoke the investigation graph.
+    Returns a tuple of (formatted message string, resolved integrations dict).
+    Raises RuntimeError on unrecoverable pipeline failures.
     """
     builders = {
         TaskKind.DAILY_SUMMARY: _build_daily_summary,
@@ -38,19 +93,28 @@ def build_message(task: ScheduledTask) -> str:
     }
     builder = builders.get(task.kind)
     if builder is None:
-        return f"⚠️ Unknown task kind: {task.kind}"
-    return builder(task)
+        return f"⚠️ Unknown task kind: {task.kind}", {}
+    
+    message, resolved = builder(task)
+
+    condition = task.params.get("condition")
+    if condition and condition.strip() and message:
+        should_deliver = _evaluate_notification_condition(message, condition)
+        if not should_deliver:
+            raise SkipDeliveryException(f"Notification policy '{condition}' not met.", resolved_integrations=resolved)
+
+    return message, resolved
 
 
-def _build_daily_summary(task: ScheduledTask) -> str:
+def _build_daily_summary(task: ScheduledTask) -> tuple[str, dict[str, Any]]:
     """Build a daily reliability digest by running the investigation pipeline.
 
     Queries the pipeline with a 'daily_summary' source over the configured
-    window. Returns the pipeline report if available. Distinguishes between
-    'pipeline ran but found nothing' vs 'pipeline failed' in the fallback.
+    window. Returns the pipeline report if available.
     """
     now = datetime.now(UTC)
     window_start = now - timedelta(hours=task.window_hours)
+    resolved: dict[str, Any] = {}
 
     try:
         from app.pipeline.runners import run_investigation
@@ -64,8 +128,12 @@ def _build_daily_summary(task: ScheduledTask) -> str:
             "window_end": now.isoformat(),
         }
         result = run_investigation(alert_payload)
-        if result and result.get("report"):
-            return str(result["report"])
+        if result:
+            resolved = result.get("resolved_integrations") or {}
+            if result.get("telegram_message"):
+                resolved["_telegram_message"] = result["telegram_message"]
+            if result.get("report"):
+                return str(result["report"]), resolved
         # Pipeline ran successfully but returned no report — genuinely quiet
     except Exception as exc:
         logger.error("Daily summary pipeline query failed for task %s: %s", task.id, exc)
@@ -79,19 +147,20 @@ def _build_daily_summary(task: ScheduledTask) -> str:
         f"{now.strftime('%Y-%m-%d %H:%M')} UTC\n"
         f"Window: {task.window_hours}h\n\n"
         f"✅ No active incidents detected in the monitoring window.\n\n"
-        f"<i>Generated by OpenSRE scheduled delivery</i>"
+        f"<i>Generated by OpenSRE scheduled delivery</i>",
+        resolved,
     )
 
 
-def _build_weekly_audit(task: ScheduledTask) -> str:
+def _build_weekly_audit(task: ScheduledTask) -> tuple[str, dict[str, Any]]:
     """Build a weekly noisy-alert audit by running the investigation pipeline.
 
     Queries the pipeline with a 'weekly_audit' source over the configured
-    window. Returns the pipeline report if available. Distinguishes between
-    'pipeline ran but found nothing' vs 'pipeline failed' in the fallback.
+    window.
     """
     now = datetime.now(UTC)
     window_start = now - timedelta(hours=task.window_hours)
+    resolved: dict[str, Any] = {}
 
     try:
         from app.pipeline.runners import run_investigation
@@ -105,8 +174,12 @@ def _build_weekly_audit(task: ScheduledTask) -> str:
             "window_end": now.isoformat(),
         }
         result = run_investigation(alert_payload)
-        if result and result.get("report"):
-            return str(result["report"])
+        if result:
+            resolved = result.get("resolved_integrations") or {}
+            if result.get("telegram_message"):
+                resolved["_telegram_message"] = result["telegram_message"]
+            if result.get("report"):
+                return str(result["report"]), resolved
     except Exception as exc:
         logger.error("Weekly audit pipeline query failed for task %s: %s", task.id, exc)
         raise RuntimeError(
@@ -118,17 +191,17 @@ def _build_weekly_audit(task: ScheduledTask) -> str:
         f"Period: {window_start.strftime('%Y-%m-%d')} → "
         f"{now.strftime('%Y-%m-%d')} UTC\n\n"
         f"✅ No noisy or actionable alerts found for the past {task.window_hours}h.\n\n"
-        f"<i>Generated by OpenSRE scheduled delivery</i>"
+        f"<i>Generated by OpenSRE scheduled delivery</i>",
+        resolved,
     )
 
 
-def _build_incident_window_replay(task: ScheduledTask) -> str:
+def _build_incident_window_replay(task: ScheduledTask) -> tuple[str, dict[str, Any]]:
     """Build an incident window replay report.
 
     Attempts to run the investigation pipeline over the configured window.
-    On failure, raises RuntimeError so the executor records the failure
-    without leaking exception details to the chat.
     """
+    resolved: dict[str, Any] = {}
     try:
         from app.pipeline.runners import run_investigation
 
@@ -139,13 +212,18 @@ def _build_incident_window_replay(task: ScheduledTask) -> str:
             "kind": task.kind.value,
         }
         result = run_investigation(alert_payload)
-        if result and result.get("report"):
-            return str(result["report"])
+        if result:
+            resolved = result.get("resolved_integrations") or {}
+            if result.get("telegram_message"):
+                resolved["_telegram_message"] = result["telegram_message"]
+            if result.get("report"):
+                return str(result["report"]), resolved
         return (
             f"🔄 <b>Incident Window Replay</b>\n\n"
             f"Window: {task.window_hours}h\n"
             f"No incidents found in replay window.\n\n"
-            f"<i>Generated by OpenSRE scheduled delivery</i>"
+            f"<i>Generated by OpenSRE scheduled delivery</i>",
+            resolved,
         )
     except Exception as exc:
         logger.error("Incident window replay failed for task %s: %s", task.id, exc)
@@ -154,14 +232,13 @@ def _build_incident_window_replay(task: ScheduledTask) -> str:
         ) from exc
 
 
-def _build_synthetic_run(task: ScheduledTask) -> str:
+def _build_synthetic_run(task: ScheduledTask) -> tuple[str, dict[str, Any]]:
     """Build a synthetic test run summary by executing the synthetic suite.
 
-    Runs the synthetic test suite and reports results. On failure, raises
-    RuntimeError so the executor records the failure without leaking
-    exception details to the chat.
+    Runs the synthetic test suite and reports results.
     """
     now = datetime.now(UTC)
+    resolved: dict[str, Any] = {}
 
     try:
         from app.pipeline.runners import run_investigation
@@ -173,8 +250,12 @@ def _build_synthetic_run(task: ScheduledTask) -> str:
             "window_hours": task.window_hours,
         }
         result = run_investigation(alert_payload)
-        if result and result.get("report"):
-            return str(result["report"])
+        if result:
+            resolved = result.get("resolved_integrations") or {}
+            if result.get("telegram_message"):
+                resolved["_telegram_message"] = result["telegram_message"]
+            if result.get("report"):
+                return str(result["report"]), resolved
     except Exception as exc:
         logger.error("Synthetic run failed for task %s: %s", task.id, exc)
         raise RuntimeError(
@@ -186,16 +267,17 @@ def _build_synthetic_run(task: ScheduledTask) -> str:
         f"Run time: {now.strftime('%Y-%m-%d %H:%M')} UTC\n\n"
         f"No synthetic test results available.\n"
         f"Configure synthetic probes to see results here.\n\n"
-        f"<i>Generated by OpenSRE scheduled delivery</i>"
+        f"<i>Generated by OpenSRE scheduled delivery</i>",
+        resolved,
     )
 
 
-def _build_custom_investigation(task: ScheduledTask) -> str:
+def _build_custom_investigation(task: ScheduledTask) -> tuple[str, dict[str, Any]]:
     """Run a custom investigation and return the report.
 
-    On failure, raises RuntimeError so the executor records the failure
-    without leaking exception details to the chat.
+    On failure, raises RuntimeError so the executor records the failure.
     """
+    resolved: dict[str, Any] = {}
     try:
         from app.pipeline.runners import run_investigation
 
@@ -209,13 +291,18 @@ def _build_custom_investigation(task: ScheduledTask) -> str:
             **safe_params,
         }
         result = run_investigation(alert_payload)
-        if result and result.get("report"):
-            return str(result["report"])
+        if result:
+            resolved = result.get("resolved_integrations") or {}
+            if result.get("telegram_message"):
+                resolved["_telegram_message"] = result["telegram_message"]
+            if result.get("report"):
+                return str(result["report"]), resolved
         return (
             f"🔍 <b>Custom Investigation</b>\n\n"
             f"Task: {task.id}\n"
             f"No findings from custom investigation.\n\n"
-            f"<i>Generated by OpenSRE scheduled delivery</i>"
+            f"<i>Generated by OpenSRE scheduled delivery</i>",
+            resolved,
         )
     except Exception as exc:
         logger.error("Custom investigation failed for task %s: %s", task.id, exc)

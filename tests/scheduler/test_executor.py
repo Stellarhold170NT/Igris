@@ -32,9 +32,11 @@ class TestExecutor:
         )
 
         with (
+            patch("app.scheduler.executor.build_message") as mock_build,
             patch("app.scheduler.executor.resolve_telegram_credentials") as mock_creds,
             patch("app.scheduler.executor._deliver_telegram") as mock_deliver,
         ):
+            mock_build.return_value = ("Fake daily summary", {"telegram": {"credentials": {"bot_token": "fake_token"}}})
             mock_creds.return_value = {"bot_token": "fake_token"}
             mock_deliver.return_value = (True, "", "msg_42")
 
@@ -52,7 +54,11 @@ class TestExecutor:
             chat_id="-100123",
         )
 
-        with patch("app.scheduler.executor.resolve_telegram_credentials") as mock_creds:
+        with (
+            patch("app.scheduler.executor.build_message") as mock_build,
+            patch("app.scheduler.executor.resolve_telegram_credentials") as mock_creds,
+        ):
+            mock_build.return_value = ("Fake daily summary", {})
             mock_creds.return_value = {}
             result = execute_task(task, "2026-01-01T09:00")
 
@@ -67,7 +73,11 @@ class TestExecutor:
             chat_id="C123456",
         )
 
-        with patch("app.scheduler.executor._deliver_slack") as mock_deliver:
+        with (
+            patch("app.scheduler.executor.build_message") as mock_build,
+            patch("app.scheduler.executor._deliver_slack") as mock_deliver,
+        ):
+            mock_build.return_value = ("Fake daily summary", {"slack": {"credentials": {"access_token": "fake_token"}}})
             mock_deliver.return_value = (True, "", "ts_123")
             result = execute_task(task, "2026-01-01T09:00")
 
@@ -83,7 +93,11 @@ class TestExecutor:
             chat_id="123456789",
         )
 
-        with patch("app.scheduler.executor._deliver_discord") as mock_deliver:
+        with (
+            patch("app.scheduler.executor.build_message") as mock_build,
+            patch("app.scheduler.executor._deliver_discord") as mock_deliver,
+        ):
+            mock_build.return_value = ("Fake daily summary", {"discord": {"credentials": {"bot_token": "fake_token"}}})
             mock_deliver.return_value = (True, "", "msg_99")
             result = execute_task(task, "2026-01-01T09:00")
 
@@ -99,7 +113,11 @@ class TestExecutor:
             chat_id="-100123",
         )
 
-        with patch("app.scheduler.executor._deliver_telegram") as mock_deliver:
+        with (
+            patch("app.scheduler.executor.build_message") as mock_build,
+            patch("app.scheduler.executor._deliver_telegram") as mock_deliver,
+        ):
+            mock_build.return_value = ("Fake daily summary", {})
             mock_deliver.return_value = (True, "", "msg_1")
 
             # First execution succeeds
@@ -136,8 +154,95 @@ class TestExecutor:
             chat_id="-100123",
         )
 
-        with patch("app.scheduler.executor._deliver_telegram") as mock_deliver:
+        with (
+            patch("app.scheduler.executor.build_message") as mock_build,
+            patch("app.scheduler.executor._deliver_telegram") as mock_deliver,
+        ):
+            mock_build.return_value = ("Fake daily summary", {})
             mock_deliver.return_value = (False, "Connection refused", "")
             result = execute_task(task, "2026-01-01T09:00")
 
         assert result is False
+
+    def test_skipped_delivery_records_success(self) -> None:
+        from app.scheduler.types import SkipDeliveryException, TaskStatus
+        from app.scheduler.claim_store import get_runs
+
+        task = ScheduledTask(
+            id="test_skip_del",
+            kind=TaskKind.CUSTOM_INVESTIGATION,
+            cron="0 9 * * *",
+            provider=Provider.TELEGRAM,
+            chat_id="-100123",
+            params={"condition": "gửi khi có lỗi"},
+        )
+
+        with patch("app.scheduler.executor.build_message") as mock_build:
+            mock_build.side_effect = SkipDeliveryException("Condition not met")
+            result = execute_task(task, "2026-01-01T09:00")
+
+        assert result is True
+        runs = get_runs(task.id)
+        assert len(runs) == 1
+        assert runs[0].status == TaskStatus.SKIPPED
+        assert "skipped:Condition not met" in runs[0].posted_message_id
+
+    def test_telegram_delivery_uses_preformatted_html(self) -> None:
+        from app.scheduler.executor import _deliver_telegram
+        task = ScheduledTask(
+            id="test_tg_pref",
+            kind=TaskKind.DAILY_SUMMARY,
+            cron="0 9 * * *",
+            provider=Provider.TELEGRAM,
+            chat_id="-100123",
+        )
+        resolved_integrations = {
+            "_telegram_message": "<b>Preformatted HTML Report</b>"
+        }
+        with (
+            patch("app.scheduler.executor.resolve_telegram_credentials") as mock_creds,
+            patch("app.utils.telegram_delivery.post_telegram_message") as mock_post,
+        ):
+            mock_creds.return_value = {"bot_token": "fake_token"}
+            mock_post.return_value = (True, "", "msg_pref")
+            
+            ok, err, msg_id = _deliver_telegram(task, "Markdown message", resolved_integrations)
+            
+        assert ok is True
+        assert msg_id == "msg_pref"
+        mock_post.assert_called_once_with(
+            "-100123",
+            "<b>Preformatted HTML Report</b>",
+            "fake_token",
+            parse_mode="HTML"
+        )
+
+    def test_telegram_delivery_fallback_to_markdown_conversion(self) -> None:
+        from app.scheduler.executor import _deliver_telegram
+        task = ScheduledTask(
+            id="test_tg_fallback",
+            kind=TaskKind.DAILY_SUMMARY,
+            cron="0 9 * * *",
+            provider=Provider.TELEGRAM,
+            chat_id="-100123",
+        )
+        resolved_integrations = {}
+        with (
+            patch("app.scheduler.executor.resolve_telegram_credentials") as mock_creds,
+            patch("app.utils.telegram_delivery.post_telegram_message") as mock_post,
+        ):
+            mock_creds.return_value = {"bot_token": "fake_token"}
+            mock_post.return_value = (True, "", "msg_fallback")
+            
+            ok, err, msg_id = _deliver_telegram(task, "**Markdown bold**", resolved_integrations)
+            
+        assert ok is True
+        assert msg_id == "msg_fallback"
+        # Verify markdown is converted to HTML: **Markdown bold** -> <b>Markdown bold</b>
+        mock_post.assert_called_once_with(
+            "-100123",
+            "<b>Markdown bold</b>",
+            "fake_token",
+            parse_mode="HTML"
+        )
+

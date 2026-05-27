@@ -22,7 +22,7 @@ class TestMessageBuilders:
             "app.pipeline.runners.run_investigation",
             lambda *_a, **_kw: {},
         )
-        msg = tasks_mod.build_message(task)
+        msg, _ = tasks_mod.build_message(task)
         assert "Daily Reliability Summary" in msg
         assert "24h" in msg
         assert "OpenSRE" in msg
@@ -39,7 +39,7 @@ class TestMessageBuilders:
             "app.pipeline.runners.run_investigation",
             lambda *_a, **_kw: {},
         )
-        msg = tasks_mod.build_message(task)
+        msg, _ = tasks_mod.build_message(task)
         assert "Weekly Alert Audit" in msg
         assert "168h" in msg
 
@@ -54,7 +54,7 @@ class TestMessageBuilders:
             "app.pipeline.runners.run_investigation",
             lambda *_a, **_kw: {},
         )
-        msg = tasks_mod.build_message(task)
+        msg, _ = tasks_mod.build_message(task)
         assert "Synthetic Test Summary" in msg
 
     def test_daily_summary_uses_pipeline_report(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -70,7 +70,7 @@ class TestMessageBuilders:
             "app.pipeline.runners.run_investigation",
             lambda *_a, **_kw: {"report": "Real incident data from pipeline"},
         )
-        msg = tasks_mod.build_message(task)
+        msg, _ = tasks_mod.build_message(task)
         assert msg == "Real incident data from pipeline"
 
     def test_weekly_audit_uses_pipeline_report(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -85,7 +85,7 @@ class TestMessageBuilders:
             "app.pipeline.runners.run_investigation",
             lambda *_a, **_kw: {"report": "Weekly audit from real data"},
         )
-        msg = tasks_mod.build_message(task)
+        msg, _ = tasks_mod.build_message(task)
         assert msg == "Weekly audit from real data"
 
     def test_synthetic_run_uses_pipeline_report(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -99,7 +99,7 @@ class TestMessageBuilders:
             "app.pipeline.runners.run_investigation",
             lambda *_a, **_kw: {"report": "3/3 probes passed"},
         )
-        msg = tasks_mod.build_message(task)
+        msg, _ = tasks_mod.build_message(task)
         assert msg == "3/3 probes passed"
 
     def test_incident_window_replay_pipeline_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -110,7 +110,8 @@ class TestMessageBuilders:
             chat_id="-100",
         )
 
-        def _mock_build_replay(_t: ScheduledTask) -> str:
+        from typing import Any
+        def _mock_build_replay(_t: ScheduledTask) -> tuple[str, dict[str, Any]]:
             raise RuntimeError("Pipeline failed")
 
         monkeypatch.setattr(tasks_mod, "_build_incident_window_replay", _mock_build_replay)
@@ -126,7 +127,8 @@ class TestMessageBuilders:
             chat_id="-100",
         )
 
-        def _mock_build_custom(_t: ScheduledTask) -> str:
+        from typing import Any
+        def _mock_build_custom(_t: ScheduledTask) -> tuple[str, dict[str, Any]]:
             raise RuntimeError("Custom investigation failed")
 
         monkeypatch.setattr(tasks_mod, "_build_custom_investigation", _mock_build_custom)
@@ -192,3 +194,49 @@ class TestMessageBuilders:
         tasks_mod._build_custom_investigation(task)
         assert "bot_token" not in captured_payload
         assert captured_payload.get("custom_param") == "safe_value"
+
+    def test_build_message_with_condition_met(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verify build_message returns the message if the condition is met."""
+        task = ScheduledTask(
+            kind=TaskKind.CUSTOM_INVESTIGATION,
+            cron="0 9 * * *",
+            provider=Provider.TELEGRAM,
+            chat_id="-100",
+            params={"condition": "gửi khi có lỗi"},
+        )
+        monkeypatch.setattr(
+            "app.pipeline.runners.run_investigation",
+            lambda *_a, **_kw: {"report": "Database issue found"},
+        )
+        monkeypatch.setattr(
+            tasks_mod,
+            "_evaluate_notification_condition",
+            lambda report, cond: True,
+        )
+
+        msg, _ = tasks_mod.build_message(task)
+        assert msg == "Database issue found"
+
+    def test_build_message_with_condition_not_met(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verify build_message raises SkipDeliveryException if the condition is not met."""
+        from app.scheduler.types import SkipDeliveryException
+
+        task = ScheduledTask(
+            kind=TaskKind.CUSTOM_INVESTIGATION,
+            cron="0 9 * * *",
+            provider=Provider.TELEGRAM,
+            chat_id="-100",
+            params={"condition": "gửi khi có lỗi"},
+        )
+        monkeypatch.setattr(
+            "app.pipeline.runners.run_investigation",
+            lambda *_a, **_kw: {"report": "Everything healthy"},
+        )
+        monkeypatch.setattr(
+            tasks_mod,
+            "_evaluate_notification_condition",
+            lambda report, cond: False,
+        )
+
+        with pytest.raises(SkipDeliveryException, match="Notification policy 'gửi khi có lỗi' not met"):
+            tasks_mod.build_message(task)

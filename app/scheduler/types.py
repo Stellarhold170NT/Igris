@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import uuid
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -50,6 +52,7 @@ class ScheduledTask(BaseModel):
     timezone: str = "UTC"
     provider: Provider
     chat_id: str = ""
+    trello_board_id: str = ""
     window_hours: int = 24
     enabled: bool = True
     params: dict[str, str] = Field(default_factory=dict)
@@ -75,10 +78,20 @@ class TaskRun(BaseModel):
     provider: str = ""
 
 
+class SkipDeliveryException(Exception):
+    """Raised when task execution finishes but notification delivery should be skipped."""
+
+    def __init__(self, reason: str, resolved_integrations: dict[str, Any] | None = None) -> None:
+        self.reason = reason
+        self.resolved_integrations = resolved_integrations or {}
+        super().__init__(reason)
+
+
 __all__ = [
     "Provider",
     "ScheduledTask",
     "TaskKind",
     "TaskRun",
     "TaskStatus",
+    "SkipDeliveryException",
 ]
