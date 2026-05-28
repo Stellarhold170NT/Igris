@@ -1,0 +1,43 @@
+[package]
+name = "coral-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "coral"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[features]
+cli-test-server = []
+embedded-ui = ["dep:rust-embed"]
+
+[dependencies]
+anyhow.workspace = true
+arrow.workspace = true
+clap.workspace = true
+clap_complete.workspace = true
+dialoguer.workspace = true
+rust-embed = { workspace = true, optional = true }
+thiserror.workspace = true
+tokio.workspace = true
+tonic.workspace = true
+
+coral-api.workspace = true
+coral-app.workspace = true
+coral-client.workspace = true
+coral-mcp.workspace = true
+coral-spec.workspace = true
+
+[dev-dependencies]
+assert_cmd.workspace = true
+jsonschema.workspace = true
+rmcp = { workspace = true, features = ["transport-child-process"] }
+serde_json.workspace = true
+tempfile.workspace = true
+tokio-stream.workspace = true
+tonic-types.workspace = true

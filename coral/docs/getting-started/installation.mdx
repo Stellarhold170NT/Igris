@@ -1,0 +1,107 @@
+---
+title: "Installation"
+description: "Install the Coral CLI"
+---
+
+Coral ships as a single local CLI. Once installed, the same binary is used for source management, SQL queries, and the MCP stdio server.
+
+<Note>
+  Coral currently supports macOS and Linux only.
+</Note>
+
+## Install Coral
+
+<Tabs>
+  <Tab title="Homebrew">
+    ```shellscript
+    brew install withcoral/tap/coral
+    ```
+  </Tab>
+
+  <Tab title="Install script">
+    ```shellscript
+    curl -fsSL https://withcoral.com/install.sh | sh
+    ```
+  </Tab>
+
+  <Tab title="Build from source">
+    Requires [Rust and Cargo](https://www.rust-lang.org/tools/install) installed.
+
+    ```shellscript
+    cargo install --path crates/coral-cli --locked
+    coral --help
+    ```
+  </Tab>
+</Tabs>
+
+<Tip>
+  Once installed, run `coral onboard` to start the interactive wizard to complete the setup.
+</Tip>
+
+## Upgrade
+
+<Tabs>
+  <Tab title="Homebrew">
+    ```shellscript
+    brew upgrade withcoral/tap/coral
+    ```
+  </Tab>
+
+  <Tab title="Install script">
+    Re-run the installer to upgrade a direct install:
+
+    ```shellscript
+    curl -fsSL https://withcoral.com/install.sh | sh
+    ```
+  </Tab>
+</Tabs>
+
+## Uninstall
+
+<Tabs>
+  <Tab title="Homebrew">
+    ```shellscript
+    brew uninstall withcoral/tap/coral
+    ```
+  </Tab>
+
+  <Tab title="Install script">
+    ```shellscript
+    rm -f ~/.local/bin/coral
+    rm -rf ~/.config/coral
+    ```
+  </Tab>
+</Tabs>
+
+## Skills
+
+Coral publishes a set of agent skills that teach your coding agent how to use Coral effectively. Install them with:
+
+```shellscript
+npx skills add withcoral/skills
+```
+
+Available skills:
+
+- **`coral`** — teaches your agent the discovery-first workflow for answering data questions with `coral sql`, including how to use `coral.tables`, `coral.columns`, and `coral.inputs`.
+- **`coral-create-source-spec`** — guides your agent through authoring or repairing a custom source spec YAML for `coral source add --file`, or adapting it into a bundled source.
+
+Browse the source at [github.com/withcoral/skills](https://github.com/withcoral/skills).
+
+## Local state
+
+Coral stores local state in its platform-specific configuration directory. You can override that location with:
+
+```shellscript
+export CORAL_CONFIG_DIR=/path/to/coral-config
+```
+
+Important files include:
+
+- `config.toml` for installed-source metadata and non-secret variables
+- imported source specs under `workspaces/<workspace>/sources/<source>/manifest.yaml`
+- source secrets stored separately within the same local trust boundary
+
+<Note>
+  [Bundled source](/reference/bundled-sources) specs are not copied into the config directory. Coral resolves them from the current binary when you validate or query a bundled source, so upgrades pick up newer bundled manifests without re-adding the source.
+</Note>
