@@ -30,10 +30,6 @@ _SYSTEM_PROMPT = (
     "You are V-SRE Assistant with direct tool access.\n"
     "When the user asks for data or wants to query systems "
     "(GitHub, DBs, Logs, etc.), USE the available tools immediately.\n"
-    "For coral_query: write SQL queries. Start with discovery:\n"
-    "  1. SELECT * FROM coral.tables LIMIT 20;\n"
-    "  2. SELECT * FROM coral.columns WHERE table_name = '...';\n"
-    "  3. Then query the actual data with LIMIT 10.\n"
     "Be concise. Show results clearly in markdown."
 )
 
@@ -67,7 +63,10 @@ def answer_with_tools(
         resolved = resolve_integrations({"raw_alert": {}})
         from app.agent.investigation import _availability_view
         available_sources = _availability_view(resolved)
-        all_tools = get_registered_tools("investigation")
+        # Merge investigation + chat-only tools so --vsre sees coral_query etc.
+        inv_tools = {t.name: t for t in get_registered_tools("investigation")}
+        chat_tools = {t.name: t for t in get_registered_tools("chat")}
+        all_tools = list({**inv_tools, **chat_tools}.values())
 
         tools = []
         for t in all_tools:

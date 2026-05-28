@@ -59,25 +59,27 @@ Sau đó OpenSRE sẽ tự dùng `./bin/coral` mà không cần cài đặt vào
 
 # Kiểm tra tool trong OpenSRE
 uv run opensre chat --help
-# Trong investigation, tool coral_query sẽ xuất hiện nếu CORAL_ENABLED=true
+# Trong interactive chat, tool coral_query sẽ xuất hiện nếu CORAL_ENABLED=true
 ```
 
 ---
 
-## 2. Sử dụng tool `coral_query`
+## 2. Sử dụng tool `coral_query` (Chat-only)
 
-Khi Coral được kích hoạt, AI agent có tool:
+> **Lưu ý**: `coral_query` chỉ xuất hiện trong **interactive chat** (`opensre chat`), không phải trong **investigation pipeline** (`opensre investigate`). Coral dùng để capture/snapshot trạng thái hệ thống sau khi đã phân tích, không phải để khoan sâu log hay điều tra root cause.
+
+Khi Coral được kích hoạt, AI agent có tool **chỉ trong chat mode** (không dùng trong investigation):
 
 ```json
 {
   "name": "coral_query",
-  "description": "Query multiple data sources using Coral SQL..."
+  "description": "Capture a unified snapshot of system state using Coral SQL..."
 }
 ```
 
-### 2.1. Luồng khuyến nghị: Discovery-First
+### 2.1. Discovery workflow (khi cần)
 
-AI agent **nên** tuân theo luồng này trước khi chạy query dữ liệu:
+Nếu schema chưa rõ, có thể khám phá trước khi snapshot:
 
 ```sql
 -- 1. Liệt kê tất cả tables

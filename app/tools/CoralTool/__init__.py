@@ -1,4 +1,4 @@
-"""Enhanced Coral SQL Query Tool with source discovery and bridge support."""
+"""Coral SQL Capture Tool — system state snapshot via unified SQL."""
 from __future__ import annotations
 
 import os
@@ -13,7 +13,6 @@ _manager: CoralManager | None = None
 
 
 def _resolve_coral_binary() -> str | None:
-    """Find the coral binary: env > ./bin/coral > PATH."""
     if env_path := os.environ.get("CORAL_BINARY"):
         return env_path if Path(env_path).exists() else None
 
@@ -41,30 +40,29 @@ def _is_coral_available(_resolved: dict[str, dict]) -> bool:
 @tool(
     name="coral_query",
     description=(
-        "Query multiple data sources (GitHub, GitLab, Datadog, Grafana, etc.) "
-        "using Coral SQL. Supports JOINs across sources.\n\n"
-        "ALWAYS follow a Discovery-First workflow:\n"
-        "1. List tables: SELECT * FROM coral.tables;\n"
-        "2. List functions: SELECT * FROM coral.table_functions;\n"
-        "3. Check columns: SELECT * FROM coral.columns WHERE table_name = '...';\n"
-        "4. Then execute your data query.\n\n"
-        "Sources are enabled via CORAL_<SOURCE>=true env vars."
+        "Capture a unified snapshot of system state by querying multiple "
+        "data sources (Grafana, Datadog, GitHub, Slack, etc.) through a single "
+        "Coral SQL statement. Useful AFTER analysis to record system posture, "
+        "not for deep log drilling or root-cause investigation.\n\n"
+        "Discovery-First workflow when needed:\n"
+        "1. SELECT * FROM coral.tables LIMIT 20;\n"
+        "2. SELECT * FROM coral.columns WHERE table_name = '...';\n"
+        "3. Then query with LIMIT."
     ),
     source="coral",
-    surfaces=("investigation", "chat"),
+    surfaces=("chat",),
     use_cases=[
-        "Unified querying across multiple integrations",
-        "Complex data joins between different platforms",
-        "Discovering available data schemas dynamically",
+        "Post-incident system state snapshot",
+        "Cross-platform data capture for audit/replay",
     ],
     is_available=_is_coral_available,
 )
 def coral_query(sql: str) -> dict[str, Any]:
-    """Execute a SQL query using the Coral runtime.
+    """Execute a Coral SQL snapshot query.
 
     Args:
-        sql: A Coral SQL query. Start with discovery queries
-             (coral.tables, coral.columns) before running data queries.
+        sql: A read-only Coral SQL query. Run discovery first
+             (coral.tables, coral.columns) if table schema is unknown.
     """
     manager = _get_manager({})
     return manager.execute_sql(sql)
