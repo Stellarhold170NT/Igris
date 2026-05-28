@@ -34,11 +34,28 @@ CORAL_GITLAB=true
 
 Nếu cả `CORAL_AUTO_ENABLE` và `CORAL_<SOURCE>` đều không bật, Coral vẫn chạy nhưng **không có source nào** ngoài các `@coralapi` custom.
 
-### 1.2. Kiểm tra
+### 1.2. Build Coral binary (một lần)
+
+Coral core là Rust, được build ra binary `coral`. OpenSRE tự động tìm binary theo thứ tự:
+1. `CORAL_BINARY` env var
+2. `./bin/coral` (trong thư mục gốc OpenSRE)
+3. `coral` trong PATH
+
+**Build và copy vào `bin/`:**
+
+```bash
+cd coral
+cargo build --release -p coral-cli
+cp target/release/coral ../bin/coral
+```
+
+Sau đó OpenSRE sẽ tự dùng `./bin/coral` mà không cần cài đặt vào hệ thống.
+
+### 1.3. Kiểm tra
 
 ```bash
 # Kiểm tra coral binary
-coral --version
+./bin/coral --version
 
 # Kiểm tra tool trong OpenSRE
 uv run opensre chat --help

@@ -1,0 +1,6 @@
+# Coral binary directory
+# Place the compiled 'coral' binary here.
+# Build: cd coral && cargo build --release -p coral-cli
+# Then copy: cp coral/target/release/coral bin/coral
+*
+!.gitignore

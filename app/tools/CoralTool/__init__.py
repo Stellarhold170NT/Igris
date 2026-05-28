@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import shutil
+from pathlib import Path
 from typing import Any
 
 from app.coral_api.manager import CoralManager
@@ -11,17 +12,29 @@ from app.tools.tool_decorator import tool
 _manager: CoralManager | None = None
 
 
+def _resolve_coral_binary() -> str | None:
+    """Find the coral binary: env > ./bin/coral > PATH."""
+    if env_path := os.environ.get("CORAL_BINARY"):
+        return env_path if Path(env_path).exists() else None
+
+    project_bin = Path(__file__).parent.parent.parent.parent / "bin" / "coral"
+    if project_bin.exists():
+        return str(project_bin)
+
+    return shutil.which("coral")
+
+
 def _get_manager(resolved: dict[str, dict]) -> CoralManager:
     global _manager
     if _manager is None:
-        coral_binary = os.environ.get("CORAL_BINARY", "coral")
+        coral_binary = _resolve_coral_binary() or "coral"
         _manager = CoralManager(resolved, coral_binary=coral_binary)
     return _manager
 
 
 def _is_coral_available(_resolved: dict[str, dict]) -> bool:
     enabled = os.getenv("CORAL_ENABLED", "").lower() in ("true", "1", "yes")
-    binary = shutil.which(os.environ.get("CORAL_BINARY", "coral"))
+    binary = _resolve_coral_binary()
     return enabled and binary is not None
 
 
