@@ -146,6 +146,7 @@ def _parse_via_structured_output(
     from app.services import get_llm_for_reasoning
 
     import os
+
     language = os.getenv("OPENSRE_LANGUAGE", "en").strip().lower()
     if language in ("vi", "vietnamese"):
         prompt = f"""Extract and translate the structured diagnosis from this investigation conclusion to Vietnamese.

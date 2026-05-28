@@ -220,9 +220,11 @@ def _build_extra_parts(state: dict[str, Any]) -> list[str]:
         annotations = raw_alert.get("commonAnnotations") or {}
         if isinstance(annotations, dict) and annotations.get("description"):
             parts.append(f"Description: {annotations['description']}")
-        
+
         # Support various custom instruction/prompt keys
-        custom_instruction = raw_alert.get("skill") or raw_alert.get("instruction") or raw_alert.get("text")
+        custom_instruction = (
+            raw_alert.get("skill") or raw_alert.get("instruction") or raw_alert.get("text")
+        )
         if custom_instruction:
             parts.append(f"Description: {custom_instruction}")
     elif isinstance(raw_alert, str) and raw_alert.strip():
@@ -395,4 +397,3 @@ def _format_connected_integrations(
         tool_names = ", ".join(f"`{tool.name}`" for tool in tools_by_source[source])
         lines.append(f"- **{source}** (available): {tool_names}")
     return "\n".join(lines) if lines else "No connected integrations exposed tools."
-

@@ -18,6 +18,7 @@ from app.delivery.publish_findings.urls.aws import (
 
 def _t(text: str) -> str:
     import os
+
     if os.getenv("OPENSRE_LANGUAGE", "en").strip().lower() not in ("vi", "vietnamese"):
         return text
     translations = {
@@ -38,7 +39,6 @@ def _t(text: str) -> str:
         "rows": "dòng",
     }
     return translations.get(text, text)
-
 
 
 def _format_tool_calls_line(
@@ -122,34 +122,48 @@ def _format_tool_calls_line(
         "get_cloudwatch_logs": (
             "cloudwatch logs",
             lambda e: (
-                f"{len(e.get('cloudwatch_logs', []))} {_t('events')}" if e.get("cloudwatch_logs") else None
+                f"{len(e.get('cloudwatch_logs', []))} {_t('events')}"
+                if e.get("cloudwatch_logs")
+                else None
             ),
             None,
         ),
         "get_error_logs": (
             "error logs",
-            lambda e: f"{len(e.get('error_logs', []))} {_t('logs')}" if e.get("error_logs") else None,
+            lambda e: (
+                f"{len(e.get('error_logs', []))} {_t('logs')}" if e.get("error_logs") else None
+            ),
             None,
         ),
         "get_failed_jobs": (
             "batch jobs",
-            lambda e: f"{len(e.get('failed_jobs', []))} {_t('failed')}" if e.get("failed_jobs") else None,
+            lambda e: (
+                f"{len(e.get('failed_jobs', []))} {_t('failed')}" if e.get("failed_jobs") else None
+            ),
             None,
         ),
         "get_failed_tools": (
             "tracer tools",
-            lambda e: f"{len(e.get('failed_tools', []))} {_t('failed')}" if e.get("failed_tools") else None,
+            lambda e: (
+                f"{len(e.get('failed_tools', []))} {_t('failed')}"
+                if e.get("failed_tools")
+                else None
+            ),
             None,
         ),
         "get_lambda_invocation_logs": (
             "lambda logs",
-            lambda e: f"{len(e.get('lambda_logs', []))} {_t('logs')}" if e.get("lambda_logs") else None,
+            lambda e: (
+                f"{len(e.get('lambda_logs', []))} {_t('logs')}" if e.get("lambda_logs") else None
+            ),
             None,
         ),
         "get_lambda_errors": (
             "lambda errors",
             lambda e: (
-                f"{len(e.get('lambda_errors', []))} {_t('errors')}" if e.get("lambda_errors") else None
+                f"{len(e.get('lambda_errors', []))} {_t('errors')}"
+                if e.get("lambda_errors")
+                else None
             ),
             None,
         ),
@@ -183,14 +197,18 @@ def _format_tool_calls_line(
         "query_grafana_traces": (
             "Grafana Tempo",
             lambda e: (
-                f"{len(e.get('grafana_traces', []))} {_t('traces')}" if e.get("grafana_traces") else None
+                f"{len(e.get('grafana_traces', []))} {_t('traces')}"
+                if e.get("grafana_traces")
+                else None
             ),
             lambda _: f"{grafana_endpoint.rstrip('/')}/explore" if grafana_endpoint else None,
         ),
         "query_grafana_metrics": (
             "Grafana Mimir",
             lambda e: (
-                f"{len(e.get('grafana_metrics', []))} {_t('metrics')}" if e.get("grafana_metrics") else None
+                f"{len(e.get('grafana_metrics', []))} {_t('metrics')}"
+                if e.get("grafana_metrics")
+                else None
             ),
             lambda _: f"{grafana_endpoint.rstrip('/')}/explore" if grafana_endpoint else None,
         ),
@@ -239,14 +257,18 @@ def _format_tool_calls_line(
         "query_datadog_events": (
             "Datadog Events",
             lambda e: (
-                f"{len(e.get('datadog_events', []))} {_t('events')}" if e.get("datadog_events") else None
+                f"{len(e.get('datadog_events', []))} {_t('events')}"
+                if e.get("datadog_events")
+                else None
             ),
             lambda _: f"https://app.{datadog_site}/event/explorer",
         ),
         "query_betterstack_logs": (
             "Better Stack Logs",
             lambda e: (
-                f"{len(e.get('betterstack_logs', []))} {_t('rows')}" if e.get("betterstack_logs") else None
+                f"{len(e.get('betterstack_logs', []))} {_t('rows')}"
+                if e.get("betterstack_logs")
+                else None
             ),
             None,  # Better Stack SQL endpoint has no user-facing deep-link URL
         ),

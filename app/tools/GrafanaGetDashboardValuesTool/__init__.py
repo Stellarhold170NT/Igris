@@ -40,7 +40,9 @@ class GetDashboardValuesOutput(BaseModel):
     source: str = Field(description="Evidence source label.")
     available: bool = Field(description="Whether the query succeeded.")
     dashboard_title: str | None = Field(default=None, description="Title of the dashboard.")
-    panels: list[dict[str, Any]] = Field(default_factory=list, description="Extracted panel metrics and statistical values.")
+    panels: list[dict[str, Any]] = Field(
+        default_factory=list, description="Extracted panel metrics and statistical values."
+    )
     error: str | None = Field(default=None, description="Error message if query failed.")
 
 
@@ -120,7 +122,9 @@ def substitute_query_variables(
 
         if var_name in merged:
             v = merged[var_name]
-            if var_name in ("interval", "__interval") and (str(v).lower() in ("auto", "all") or str(v).startswith("$__auto_interval")):
+            if var_name in ("interval", "__interval") and (
+                str(v).lower() in ("auto", "all") or str(v).startswith("$__auto_interval")
+            ):
                 return step
             if isinstance(v, list):
                 return "|".join(str(item) for item in v)
@@ -288,7 +292,11 @@ def get_grafana_dashboard_values(
             else:
                 opts_list = var.get("options", [])
                 if opts_list:
-                    valid_opts = [o.get("value") for o in opts_list if o.get("value") not in ("$__all", "All", "all")]
+                    valid_opts = [
+                        o.get("value")
+                        for o in opts_list
+                        if o.get("value") not in ("$__all", "All", "all")
+                    ]
                     val = valid_opts[0] if valid_opts else ""
                 elif var_type == "query" and client and client.is_configured:
                     raw_query = var.get("query", "")
@@ -334,7 +342,9 @@ def get_grafana_dashboard_values(
             resolved_expr = substitute_query_variables(expr, {}, default_vars, step=step)
 
             # Query Prometheus range API
-            res = client.query_mimir_range(resolved_expr, start=start_epoch, end=end_epoch, step=step)
+            res = client.query_mimir_range(
+                resolved_expr, start=start_epoch, end=end_epoch, step=step
+            )
             if not res.get("success") or not res.get("metrics"):
                 # Append a "No data" placeholder
                 metrics_out.append(
@@ -352,7 +362,9 @@ def get_grafana_dashboard_values(
                 metric_labels = series.get("metric", {})
                 # Name metric using its signature labels if available
                 metric_name = metric_labels.get("__name__") or ref_id
-                label_details = ", ".join(f"{k}={v}" for k, v in metric_labels.items() if k != "__name__")
+                label_details = ", ".join(
+                    f"{k}={v}" for k, v in metric_labels.items() if k != "__name__"
+                )
                 full_name = f"{metric_name}{{{label_details}}}" if label_details else metric_name
 
                 # Parse float values

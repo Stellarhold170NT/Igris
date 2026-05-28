@@ -900,4 +900,3 @@ class VauthzIntegrationConfig(StrictConfigModel):
     _normalize_urls = field_validator(
         "pdp_syncheck_url", "pdp_gateway_url", "vauthz_url", mode="before"
     )(normalize_url())
-

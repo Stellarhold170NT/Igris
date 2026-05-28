@@ -257,7 +257,7 @@ class TestGetTopicConsumers:
         config = KafkaConfig(bootstrap_servers="localhost:9092")
 
         mock_admin = MagicMock()
-        
+
         # Mock list_topics
         mock_metadata = MagicMock()
         mock_metadata.topics = {"vauthz-topic": MagicMock(), "other-topic": MagicMock()}
@@ -332,7 +332,10 @@ class TestGetTopicConsumers:
 
         mock_admin = MagicMock()
         mock_metadata = MagicMock()
-        mock_metadata.topics = {"vauthz.project.event": MagicMock(), "debezium.vauthz.outbox": MagicMock()}
+        mock_metadata.topics = {
+            "vauthz.project.event": MagicMock(),
+            "debezium.vauthz.outbox": MagicMock(),
+        }
         mock_admin.list_topics.return_value = mock_metadata
 
         mock_consumer = MagicMock()
@@ -372,5 +375,3 @@ class TestGetTopicConsumers:
         assert res["multiple_matches"] is False
         assert res["matched_topics"] == []
         assert "No topics matched" in res["error"]
-
-

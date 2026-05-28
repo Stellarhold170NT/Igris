@@ -258,7 +258,7 @@ def test_format_chat_response_renders_aligned_markdown_tables() -> None:
         "Done."
     )
     result = _format_chat_response(input_text)
-    
+
     assert "<pre>" in result
     assert "</pre>" in result
     assert "| Trường | Giá trị       |" in result

@@ -1,4 +1,5 @@
 """CoralManager: orchestrates source setup, bridge server, and query execution."""
+
 from __future__ import annotations
 
 import json

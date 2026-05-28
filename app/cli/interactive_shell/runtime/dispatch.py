@@ -126,6 +126,7 @@ def dispatch_one_turn(
 ) -> None:
     # Resolve skill injections (e.g. @vauthz) in the input text
     from app.cli.commands.skill import resolve_skills_in_text
+
     text = resolve_skills_in_text(text)
 
     decision = _router.route_input(text, session)

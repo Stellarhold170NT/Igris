@@ -1,4 +1,5 @@
 """Map OpenSRE env vars / credentials to Coral input env vars."""
+
 from __future__ import annotations
 
 import os

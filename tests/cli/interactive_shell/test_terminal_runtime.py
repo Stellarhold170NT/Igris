@@ -219,6 +219,7 @@ def test_shell_completer_filters_by_prefix() -> None:
 
 def test_shell_completer_suggests_skills() -> None:
     from unittest.mock import patch
+
     mock_skills = {
         "vauthz": {"prompt": "First check pdps"},
         "cpu": "High CPU",

@@ -44,7 +44,7 @@ def _evaluate_notification_condition(report_text: str, condition: str) -> bool:
         prompt = (
             "You are an SRE notification gatekeeper.\n"
             "An investigation report has been generated. The user has specified a condition/policy (which may be in Vietnamese or English) for sending notifications to external channels.\n\n"
-            f"User Condition:\n\"{condition}\"\n\n"
+            f'User Condition:\n"{condition}"\n\n'
             f"Investigation Report:\n{report_text}\n\n"
             "Guidelines to evaluate the condition:\n"
             "1. Identify the core intent of the User Condition:\n"
@@ -59,7 +59,6 @@ def _evaluate_notification_condition(report_text: str, condition: str) -> bool:
             "     - If the User Condition restricts notifications to failures only (e.g. only notify on errors) -> set should_deliver to false.\n"
             "     - If the condition is empty, unclear, or asks for always notifying -> set should_deliver to true."
         )
-
 
         decision = (
             llm.with_structured_output(DeliveryDecision)
@@ -103,7 +102,9 @@ def build_message(task: ScheduledTask) -> tuple[str, dict[str, Any]]:
     if condition and condition.strip() and message:
         should_deliver = _evaluate_notification_condition(message, condition)
         if not should_deliver:
-            raise SkipDeliveryException(f"Notification policy '{condition}' not met.", resolved_integrations=resolved)
+            raise SkipDeliveryException(
+                f"Notification policy '{condition}' not met.", resolved_integrations=resolved
+            )
 
     return message, resolved
 
@@ -296,6 +297,7 @@ def _build_custom_investigation(task: ScheduledTask) -> tuple[str, dict[str, Any
 
         # Resolve any skill references in safe_params
         from app.cli.commands.skill import load_skills, resolve_skills_in_text
+
         skills = load_skills()
         if skills:
             # First, check if there is a 'skill' parameter that needs direct lookup
@@ -304,7 +306,9 @@ def _build_custom_investigation(task: ScheduledTask) -> tuple[str, dict[str, Any
                 skill_name = skill_val.lstrip("@")
                 if skill_name in skills:
                     skill_data = skills[skill_name]
-                    resolved_prompt = skill_data.get("prompt") if isinstance(skill_data, dict) else skill_data
+                    resolved_prompt = (
+                        skill_data.get("prompt") if isinstance(skill_data, dict) else skill_data
+                    )
                     safe_params["skill"] = resolved_prompt
 
             # Second, resolve any remaining @skill references in any of the safe_params
@@ -324,6 +328,12 @@ def _build_custom_investigation(task: ScheduledTask) -> tuple[str, dict[str, Any
             resolved["_severity"] = result.get("severity") or "warning"
             if result.get("telegram_message"):
                 resolved["_telegram_message"] = result["telegram_message"]
+
+            snapshot_instruction = safe_params.get("snapshot_instruction")
+            if snapshot_instruction:
+                resolved["_snapshot_instruction"] = snapshot_instruction
+                resolved["_investigation_state"] = dict(result)
+
             if result.get("report"):
                 return str(result["report"]), resolved
         resolved["_severity"] = "healthy"

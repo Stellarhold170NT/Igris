@@ -302,12 +302,14 @@ class GrafanaClientBase:
             results = self._make_request(url, params=params)
             dashboards = []
             for item in results:
-                dashboards.append({
-                    "uid": item.get("uid", ""),
-                    "title": item.get("title", ""),
-                    "folder_title": item.get("folderTitle", "General"),
-                    "url": item.get("url", ""),
-                })
+                dashboards.append(
+                    {
+                        "uid": item.get("uid", ""),
+                        "title": item.get("title", ""),
+                        "folder_title": item.get("folderTitle", "General"),
+                        "url": item.get("url", ""),
+                    }
+                )
             return dashboards
         except Exception as e:
             logger.warning("[grafana] Failed to search dashboards: %s", e)
@@ -384,15 +386,23 @@ class GrafanaClientBase:
             result = data.get("data", {}).get("result", [])
             metrics = []
             for series in result:
-                metrics.append({
-                    "metric": series.get("metric", {}),
-                    "value": series.get("value", []),
-                })
+                metrics.append(
+                    {
+                        "metric": series.get("metric", {}),
+                        "value": series.get("value", []),
+                    }
+                )
             return {"success": True, "metrics": metrics}
         except Exception as e:
             return {"success": False, "error": str(e), "metrics": []}
 
-    def query_mimir_range(self, query: str, start: int | float | str, end: int | float | str, step: str | int | None = None) -> dict[str, Any]:
+    def query_mimir_range(
+        self,
+        query: str,
+        start: int | float | str,
+        end: int | float | str,
+        step: str | int | None = None,
+    ) -> dict[str, Any]:
         """Query Grafana Cloud Mimir using range query /api/v1/query_range."""
         if not self.is_configured:
             return {"success": False, "error": "Grafana client not configured", "metrics": []}
@@ -410,10 +420,12 @@ class GrafanaClientBase:
             result = data.get("data", {}).get("result", [])
             metrics = []
             for series in result:
-                metrics.append({
-                    "metric": series.get("metric", {}),
-                    "values": series.get("values", []),
-                })
+                metrics.append(
+                    {
+                        "metric": series.get("metric", {}),
+                        "values": series.get("values", []),
+                    }
+                )
             return {"success": True, "metrics": metrics}
         except Exception as e:
             return {"success": False, "error": str(e), "metrics": []}
@@ -444,6 +456,7 @@ class GrafanaClientBase:
         timeout: int = 10,
     ) -> dict[str, Any]:
         import time
+
         max_retries = 3
         backoff = 1.0
         for attempt in range(max_retries):

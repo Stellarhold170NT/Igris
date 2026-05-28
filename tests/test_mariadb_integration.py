@@ -674,4 +674,3 @@ class TestGetDatabases:
     def test_not_configured_returns_error(self) -> None:
         result = get_databases(MariaDBConfig())
         assert result["available"] is False
-

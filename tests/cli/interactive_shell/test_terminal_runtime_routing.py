@@ -338,6 +338,7 @@ def test_dispatch_one_turn_injects_skill_prompt(monkeypatch: pytest.MonkeyPatch)
     console = Console(file=io.StringIO(), force_terminal=False, highlight=False)
 
     from unittest.mock import patch
+
     with patch("app.cli.commands.skill.load_skills", return_value=mock_skills):
         loop_dispatch.dispatch_one_turn("hello @testskill", session, console, on_exit=lambda: None)
 

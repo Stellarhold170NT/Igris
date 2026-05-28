@@ -159,7 +159,9 @@ async def astream_investigation(
     cancel_event_internal = threading.Event()
 
     def is_cancelled() -> bool:
-        return (cancel_event is not None and cancel_event.is_set()) or cancel_event_internal.is_set()
+        return (
+            cancel_event is not None and cancel_event.is_set()
+        ) or cancel_event_internal.is_set()
 
     def _safe_call(fn: Any, *args: Any) -> None:
         try:

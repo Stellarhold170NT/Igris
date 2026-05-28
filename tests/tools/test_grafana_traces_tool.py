@@ -144,20 +144,35 @@ def test_run_filters_by_http_target_glob_and_regex() -> None:
         "traces": [
             {
                 "traceId": "t1",
-                "spans": [{"name": "POST /v2/facts", "attributes": {"http.target": "/v2/facts", "http.method": "POST"}}],
+                "spans": [
+                    {
+                        "name": "POST /v2/facts",
+                        "attributes": {"http.target": "/v2/facts", "http.method": "POST"},
+                    }
+                ],
             },
             {
                 "traceId": "t2",
-                "spans": [{"name": "POST /v2/facts/123", "attributes": {"http.target": "/v2/facts/123", "http.method": "POST"}}],
+                "spans": [
+                    {
+                        "name": "POST /v2/facts/123",
+                        "attributes": {"http.target": "/v2/facts/123", "http.method": "POST"},
+                    }
+                ],
             },
             {
                 "traceId": "t3",
-                "spans": [{"name": "GET /v2/other", "attributes": {"http.target": "/v2/other", "http.method": "GET"}}],
+                "spans": [
+                    {
+                        "name": "GET /v2/other",
+                        "attributes": {"http.target": "/v2/other", "http.method": "GET"},
+                    }
+                ],
             },
         ],
         "total_traces": 3,
     }
-    
+
     # 1. Test glob matching with /**
     with patch("app.tools.GrafanaTracesTool._resolve_grafana_client", return_value=mock_client):
         result = query_grafana_traces(
@@ -179,4 +194,3 @@ def test_run_filters_by_http_target_glob_and_regex() -> None:
     assert result["available"] is True
     assert len(result["traces"]) == 2
     assert {t["traceId"] for t in result["traces"]} == {"t1", "t2"}
-

@@ -100,6 +100,7 @@ class ReplInputLexer(Lexer):
 
     def lex_document(self, document: Document) -> Callable[[int], StyleAndTextTuples]:
         import re
+
         lines = document.lines
 
         def highlight_skills(text: str) -> StyleAndTextTuples:
@@ -180,11 +181,13 @@ class ShellCompleter(Completer):
             return
 
         import re
+
         # Check if user is typing a skill reference (e.g. @vauthz or just @)
         match = re.search(r"@([a-zA-Z0-9_-]*)$", text)
         if match:
             needle = match.group(1).lower()
             from app.cli.commands.skill import load_skills
+
             skills = load_skills()
             for name, data in skills.items():
                 if name.lower().startswith(needle):

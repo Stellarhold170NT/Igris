@@ -51,6 +51,7 @@ def answer_with_tools(
         from app.tools.registry import get_registered_tools
         from app.agent.context import resolve_integrations
         from app.cli.support.output import set_silent_tracker
+
         set_silent_tracker()
     except Exception as exc:
         report_exception(exc, context="interactive_shell.tool_agent.import")
@@ -62,6 +63,7 @@ def answer_with_tools(
         llm = get_agent_llm()
         resolved = resolve_integrations({"raw_alert": {}})
         from app.agent.investigation import _availability_view
+
         available_sources = _availability_view(resolved)
         # Merge investigation + chat-only tools so --vsre sees coral_query etc.
         inv_tools = {t.name: t for t in get_registered_tools("investigation")}
@@ -92,6 +94,7 @@ def answer_with_tools(
 
     # --- ReAct loop (configurable via env, defaults to 10) ---
     import os
+
     max_iterations = int(os.environ.get("OPENSRE_MAX_ITERATIONS", "10"))
     final_text = ""
 
@@ -162,6 +165,7 @@ def answer_with_tools(
                 out_str = out_str[:2000] + "\n... (truncated)"
             console.print(f"  [{HIGHLIGHT}]{tc.name} returned:[/]")
             from rich.syntax import Syntax
+
             syntax = Syntax(out_str, "json", theme="nord", background_color="default")
             console.print(syntax)
 

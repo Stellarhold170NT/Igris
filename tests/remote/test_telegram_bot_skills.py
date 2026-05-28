@@ -16,10 +16,11 @@ def test_telegram_bot_lists_skills_when_requested() -> None:
         "cpu": "Check CPU usage",
     }
 
-    with patch("app.cli.commands.skill.load_skills", return_value=mock_skills), \
-         patch("app.remote.telegram_bot._ALLOWED_CHAT_ID", ""), \
-         patch("app.remote.telegram_bot._send_message") as mock_send:
-
+    with (
+        patch("app.cli.commands.skill.load_skills", return_value=mock_skills),
+        patch("app.remote.telegram_bot._ALLOWED_CHAT_ID", ""),
+        patch("app.remote.telegram_bot._send_message") as mock_send,
+    ):
         _handle_message(message)
 
         mock_send.assert_called_once()
@@ -41,10 +42,11 @@ def test_telegram_bot_injects_skill_in_chat() -> None:
         "vauthz": {"prompt": "Check all PDPs"},
     }
 
-    with patch("app.cli.commands.skill.load_skills", return_value=mock_skills), \
-         patch("app.remote.telegram_bot._ALLOWED_CHAT_ID", ""), \
-         patch("app.remote.telegram_bot._run_react_chat") as mock_run_chat:
-
+    with (
+        patch("app.cli.commands.skill.load_skills", return_value=mock_skills),
+        patch("app.remote.telegram_bot._ALLOWED_CHAT_ID", ""),
+        patch("app.remote.telegram_bot._run_react_chat") as mock_run_chat,
+    ):
         _handle_message(message)
 
         expected = (
@@ -69,10 +71,11 @@ def test_telegram_bot_injects_skill_in_investigate() -> None:
         "vauthz": {"prompt": "Check all PDPs"},
     }
 
-    with patch("app.cli.commands.skill.load_skills", return_value=mock_skills), \
-         patch("app.remote.telegram_bot._ALLOWED_CHAT_ID", ""), \
-         patch("app.remote.telegram_bot._run_investigation") as mock_run_investigation:
-
+    with (
+        patch("app.cli.commands.skill.load_skills", return_value=mock_skills),
+        patch("app.remote.telegram_bot._ALLOWED_CHAT_ID", ""),
+        patch("app.remote.telegram_bot._run_investigation") as mock_run_investigation,
+    ):
         _handle_message(message)
 
         expected = (

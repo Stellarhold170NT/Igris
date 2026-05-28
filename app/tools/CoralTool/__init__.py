@@ -1,4 +1,5 @@
 """Coral SQL Capture Tool — system state snapshot via unified SQL."""
+
 from __future__ import annotations
 
 import os

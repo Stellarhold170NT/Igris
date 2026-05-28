@@ -61,6 +61,7 @@ def get_mariadb_process_list(
         max_results: Maximum results to retrieve.
         instance: Optional name of the configured MariaDB instance to target.
     """
+
     def mariadb_config_builder(database: str | None) -> MariaDBConfig:
         config = resolve_mariadb_config(
             host=host,

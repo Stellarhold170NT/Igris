@@ -27,7 +27,9 @@ class GetDashboardFiltersOutput(BaseModel):
     source: str = Field(description="Evidence source label.")
     available: bool = Field(description="Whether the query succeeded.")
     dashboard_title: str | None = Field(default=None, description="Title of the dashboard.")
-    filters: list[dict[str, Any]] = Field(default_factory=list, description="Resolved filter variables.")
+    filters: list[dict[str, Any]] = Field(
+        default_factory=list, description="Resolved filter variables."
+    )
     error: str | None = Field(default=None, description="Error message if query failed.")
 
 
@@ -52,7 +54,7 @@ def parse_grafana_variable_query(query: str) -> tuple[str, str | None, str | Non
     """
     query = query.strip()
     if query.startswith("label_values(") and query.endswith(")"):
-        inner = query[len("label_values("):-1].strip()
+        inner = query[len("label_values(") : -1].strip()
         brace_count = 0
         comma_idx = -1
         for idx, char in enumerate(inner):
@@ -66,7 +68,7 @@ def parse_grafana_variable_query(query: str) -> tuple[str, str | None, str | Non
 
         if comma_idx != -1:
             metric = inner[:comma_idx].strip()
-            label = inner[comma_idx+1:].strip()
+            label = inner[comma_idx + 1 :].strip()
             return "label_values", label, metric
         return "label_values", inner, None
 
@@ -81,6 +83,7 @@ def parse_grafana_variable_query(query: str) -> tuple[str, str | None, str | Non
 
 def resolve_dependent_variables(query: str, current_vals: dict[str, str]) -> str:
     """Replace $var or ${var:format} references with current resolved values or fallback to wildcard .*"""
+
     def replace_match(match: re.Match) -> str:
         var_name = match.group(1) or match.group(2)
         if not var_name:
@@ -199,7 +202,11 @@ def get_grafana_dashboard_filters(
         options: list[str] = []
 
         if var_type == "custom":
-            options = [str(opt.get("value", "")) for opt in var.get("options", []) if opt.get("value") is not None]
+            options = [
+                str(opt.get("value", ""))
+                for opt in var.get("options", [])
+                if opt.get("value") is not None
+            ]
         elif var_type == "textbox":
             options = []
         elif var_type == "datasource":

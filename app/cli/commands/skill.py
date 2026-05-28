@@ -24,6 +24,7 @@ def load_skills() -> dict:
 def resolve_skills_in_text(text: str) -> str:
     """Find all @skill mentions in text and append a structured guidelines block if found."""
     import re
+
     skills = load_skills()
     if not skills:
         return text

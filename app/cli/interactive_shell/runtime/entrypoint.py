@@ -82,6 +82,7 @@ def run_repl(
 
     if tool_calling:
         from app.cli.support.output import set_silent_tracker
+
         set_silent_tracker()
 
     run_startup_sweep()
@@ -96,7 +97,9 @@ def run_repl(
         render_banner(real_console)
 
     try:
-        return asyncio.run(repl_main(initial_input=initial_input, _config=cfg, tool_calling=tool_calling))
+        return asyncio.run(
+            repl_main(initial_input=initial_input, _config=cfg, tool_calling=tool_calling)
+        )
     except (EOFError, KeyboardInterrupt):
         return 0
 

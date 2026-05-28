@@ -25,7 +25,9 @@ class ListDashboardsInput(BaseModel):
 class ListDashboardsOutput(BaseModel):
     source: str = Field(description="Evidence source label.")
     available: bool = Field(description="Whether the query succeeded.")
-    dashboards: list[dict[str, Any]] = Field(default_factory=list, description="List of matching dashboards.")
+    dashboards: list[dict[str, Any]] = Field(
+        default_factory=list, description="List of matching dashboards."
+    )
     error: str | None = Field(default=None, description="Error message if query failed.")
 
 

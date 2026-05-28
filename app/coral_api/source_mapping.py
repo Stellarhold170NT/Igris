@@ -1,4 +1,5 @@
 """Map OpenSRE integrations to Coral native sources."""
+
 from __future__ import annotations
 
 import os
@@ -95,7 +96,9 @@ SOURCE_MAPPINGS: dict[str, CoralSourceMapping] = {
 }
 
 
-def get_enabled_sources(resolved_integrations: dict[str, dict[str, Any]]) -> dict[str, CoralSourceMapping]:
+def get_enabled_sources(
+    resolved_integrations: dict[str, dict[str, Any]],
+) -> dict[str, CoralSourceMapping]:
     """Return enabled Coral source mappings.
 
     A source is enabled if its CORAL_<NAME> env var is "true"/"1"/"yes",

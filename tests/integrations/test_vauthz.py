@@ -34,17 +34,13 @@ def test_ensure_scheme() -> None:
 
 def test_get_pdp_fleet_url() -> None:
     assert (
-        get_pdp_fleet_url("117.5.151.111:4000/api/fleet")
-        == "http://117.5.151.111:4000/api/fleet"
+        get_pdp_fleet_url("117.5.151.111:4000/api/fleet") == "http://117.5.151.111:4000/api/fleet"
     )
     assert get_pdp_fleet_url("http://117.5.151.111:4000") == "http://117.5.151.111:4000/api/fleet"
 
 
 def test_get_pdp_data_url() -> None:
-    assert (
-        get_pdp_data_url("http://117.5.151.111:7766")
-        == "http://117.5.151.111:7766/v1/data"
-    )
+    assert get_pdp_data_url("http://117.5.151.111:7766") == "http://117.5.151.111:7766/v1/data"
 
 
 def test_get_db_data_url() -> None:
@@ -136,18 +132,18 @@ def test_list_pdps_filtering_and_counts() -> None:
             },
         ]
     }
-    
+
     mock_resp = MagicMock()
     mock_resp.json.return_value = raw_response
     mock_resp.raise_for_status = MagicMock()
-    
+
     with patch("httpx.Client.get", return_value=mock_resp):
         res = list_pdps("117.5.151.111:4000/api/fleet")
-        
+
     pdps = res["pdps"]
     # pdp-local-1 must be filtered out
     assert len(pdps) == 3
-    
+
     # Check fields are mapped correctly
     p1 = [p for p in pdps if p["pdp_id"] == "pdp-k8s-1"][0]
     assert p1["online"] is True
@@ -156,7 +152,7 @@ def test_list_pdps_filtering_and_counts() -> None:
     assert p1["pdp_version"] == "military-youth-pdp-9976fdc6b-5ckvt"
     # Counts of remaining PDPs: env-1 has 1 ("pdp-k8s-1"), env-2 has 2 ("pdp-k8s-2", "pdp-k8s-3")
     assert p1["number_count"] == 1
-    
+
     p2 = [p for p in pdps if p["pdp_id"] == "pdp-k8s-2"][0]
     assert p2["online"] is False
     assert p2["desc"] == "PDP đã bị chết trên k8s server"
@@ -168,35 +164,25 @@ def test_extract_and_group_events() -> None:
         {
             "event_type": "OpalCallback",
             "details": {
-                "verify_results": [
-                    {"dst_path": "/role_permissions/thong_tin_doan_vien/nguoi_xem"}
-                ]
+                "verify_results": [{"dst_path": "/role_permissions/thong_tin_doan_vien/nguoi_xem"}]
             },
             "callback_info": {
-                "delta_snapshots": [
-                    {"dst_path": "/role_permissions/thong_tin_doan_vien/admin"}
-                ],
+                "delta_snapshots": [{"dst_path": "/role_permissions/thong_tin_doan_vien/admin"}],
                 "raw_payload": {
-                    "reports": [
-                        {"entry": {"dst_path": "/resource_types/thong_tin_doan_vien"}}
-                    ]
-                }
-            }
+                    "reports": [{"entry": {"dst_path": "/resource_types/thong_tin_doan_vien"}}]
+                },
+            },
         },
         {
             "event_type": "OtherType",
-            "details": {
-                "verify_results": [
-                    {"dst_path": "/ignored_prefix/path"}
-                ]
-            }
-        }
+            "details": {"verify_results": [{"dst_path": "/ignored_prefix/path"}]},
+        },
     ]
     grouped = extract_and_group_events(events)
     assert "role_permissions" in grouped
     assert "resource_types" in grouped
     assert "ignored_prefix" not in grouped
-    
+
     assert "/role_permissions/thong_tin_doan_vien/nguoi_xem" in grouped["role_permissions"]
     assert "/role_permissions/thong_tin_doan_vien/admin" in grouped["role_permissions"]
     assert "/resource_types/thong_tin_doan_vien" in grouped["resource_types"]
@@ -211,16 +197,12 @@ def test_extract_auth_token() -> None:
                     "reports": [
                         {
                             "entry": {
-                                "config": {
-                                    "headers": {
-                                        "Authorization": "Bearer vauthz_token_123"
-                                    }
-                                }
+                                "config": {"headers": {"Authorization": "Bearer vauthz_token_123"}}
                             }
                         }
                     ]
                 }
-            }
+            },
         }
     ]
     token = extract_auth_token(events)
@@ -235,11 +217,7 @@ def test_remove_null_fields() -> None:
             "keep_int": 42,
             "remove_null_nested": None,
         },
-        "list": [
-            "val",
-            None,
-            {"nested_in_list": None, "keep_bool": True}
-        ]
+        "list": ["val", None, {"nested_in_list": None, "keep_bool": True}],
     }
     cleaned = remove_null_fields(data)
     assert cleaned == {
@@ -247,10 +225,7 @@ def test_remove_null_fields() -> None:
         "nested": {
             "keep_int": 42,
         },
-        "list": [
-            "val",
-            {"keep_bool": True}
-        ]
+        "list": ["val", {"keep_bool": True}],
     }
 
 
@@ -262,6 +237,7 @@ def test_extract_pdp_name() -> None:
 
 def test_jsonify_diff() -> None:
     import jsondiff
+
     diff = jsondiff.diff({"a": 1}, {"b": 2}, syntax="symmetric")
     jsonified = jsonify_diff(diff)
     # The keys should be strings like '$insert' and '$delete'
@@ -284,18 +260,14 @@ def test_compare_pdp_data_flow() -> None:
                             {
                                 "entry": {
                                     "dst_path": "/role_permissions/abc",
-                                    "config": {
-                                        "headers": {
-                                            "Authorization": "Bearer tok-1"
-                                        }
-                                    }
+                                    "config": {"headers": {"Authorization": "Bearer tok-1"}},
                                 }
                             }
                         ]
-                    }
-                }
+                    },
+                },
             }
-        ]
+        ],
     }
 
     events_resp = MagicMock()
@@ -303,10 +275,7 @@ def test_compare_pdp_data_flow() -> None:
     events_resp.raise_for_status = MagicMock()
 
     # 2. Mock DB Data (with nulls to be cleaned, and differ from OPA data)
-    db_data_raw = {
-        "rules": {"allow": True},
-        "redundant": None
-    }
+    db_data_raw = {"rules": {"allow": True}, "redundant": None}
     db_resp = MagicMock()
     db_resp.json.return_value = db_data_raw
     db_resp.raise_for_status = MagicMock()
@@ -328,9 +297,7 @@ def test_compare_pdp_data_flow() -> None:
     fleet_resp.raise_for_status = MagicMock()
 
     # 4. Mock OPA data (differs from DB rules allow)
-    opa_data_raw = {
-        "rules": {"allow": False}
-    }
+    opa_data_raw = {"rules": {"allow": False}}
     opa_resp = MagicMock()
     opa_resp.json.return_value = opa_data_raw
     opa_resp.raise_for_status = MagicMock()
@@ -340,7 +307,9 @@ def test_compare_pdp_data_flow() -> None:
     # 2. fetch DB data -> db_resp
     # 3. fetch fleet (for X-pdp-name) -> fleet_resp
     # 4. fetch OPA data -> opa_resp
-    with patch("httpx.Client.get", side_effect=[events_resp, db_resp, fleet_resp, opa_resp]) as mock_get:
+    with patch(
+        "httpx.Client.get", side_effect=[events_resp, db_resp, fleet_resp, opa_resp]
+    ) as mock_get:
         res = compare_pdp_data(
             pdp_gateway_url="http://gateway",
             vauthz_url="http://vauthz",
@@ -367,7 +336,7 @@ def test_get_pdp_events_url_stripping() -> None:
     mock_resp = MagicMock()
     mock_resp.json.return_value = []
     mock_resp.raise_for_status = MagicMock()
-    
+
     with patch("httpx.Client.get", return_value=mock_resp) as mock_get:
         get_pdp_events("http://117.5.151.111:4000/api/fleet", "pdp-123")
         mock_get.assert_called_once_with("http://117.5.151.111:4000/api/pdp/pdp-123/events")

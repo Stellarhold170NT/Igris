@@ -194,11 +194,7 @@ def _build_cancel_key_bindings(state: _ReplState) -> KeyBindings:
 
 def _install_session_key_bindings(pt_session: object, extra_kb: KeyBindings) -> None:
     existing = getattr(pt_session, "key_bindings", None)
-    merged = (
-        merge_key_bindings([existing, extra_kb])
-        if existing is not None
-        else extra_kb
-    )
+    merged = merge_key_bindings([existing, extra_kb]) if existing is not None else extra_kb
     pt_session.key_bindings = merged  # type: ignore[attr-defined]
 
 
@@ -263,6 +259,7 @@ def _dispatch_one_turn(
 
     # ── ReAct loop (configurable via env, defaults to 10) ─────────────
     import os
+
     max_iterations = int(os.environ.get("OPENSRE_MAX_ITERATIONS", "10"))
     for _iteration in range(max_iterations):
         if cancel_event.is_set():
@@ -271,7 +268,9 @@ def _dispatch_one_turn(
 
         try:
             response = llm.invoke(
-                messages, system=_SYSTEM_PROMPT, tools=tool_schemas,
+                messages,
+                system=_SYSTEM_PROMPT,
+                tools=tool_schemas,
             )
         except KeyboardInterrupt:
             console.print(f"[{WARNING}]· interrupted[/]")
@@ -337,6 +336,7 @@ def _dispatch_one_turn(
                 out_str = out_str[:2000] + "\n... (truncated)"
             console.print(f"  [{HIGHLIGHT}]{tc.name} returned:[/]")
             from rich.syntax import Syntax
+
             syntax = Syntax(out_str, "json", theme="nord", background_color="default")
             console.print(syntax)
 
@@ -378,8 +378,11 @@ async def _run_interactive(
     # Temporarily suspend drawing during dispatch when investigation display is active.
     def should_suspend() -> bool:
         from app.cli.support.output import _active_display
+
         is_live_active = _active_display is not None and _active_display._live.is_started
-        return state.is_dispatch_running() and is_live_active and not state.is_awaiting_confirmation()
+        return (
+            state.is_dispatch_running() and is_live_active and not state.is_awaiting_confirmation()
+        )
 
     original_invalidate = pt_app.invalidate
     original_render = pt_app.renderer.render

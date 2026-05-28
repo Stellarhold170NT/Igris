@@ -35,27 +35,27 @@ def _match_target(pattern: str, target: str) -> bool:
         return False
     if pattern in target:
         return True
-        
-    has_glob = '*' in pattern or '?' in pattern
-    
+
+    has_glob = "*" in pattern or "?" in pattern
+
     if has_glob:
         p = pattern
         has_end_wildcard = False
-        if p.endswith('/**'):
+        if p.endswith("/**"):
             p = p[:-3]
             has_end_wildcard = True
-        elif p.endswith('/*'):
+        elif p.endswith("/*"):
             p = p[:-2]
             has_end_wildcard = True
-            
+
         escaped = re.escape(p)
-        regex_pattern = escaped.replace(r'\*', r'.*').replace(r'\?', r'.')
-        
+        regex_pattern = escaped.replace(r"\*", r".*").replace(r"\?", r".")
+
         if has_end_wildcard:
-            regex_pattern = regex_pattern + r'(?:/.*)?'
+            regex_pattern = regex_pattern + r"(?:/.*)?"
     else:
         regex_pattern = pattern
-        
+
     try:
         if re.search(regex_pattern, target, re.IGNORECASE):
             return True
@@ -109,11 +109,11 @@ def _query_grafana_traces_available(sources: dict[str, dict]) -> bool:
             "http_method": {
                 "type": "string",
                 "enum": ["GET", "POST", "PUT", "DELETE"],
-                "description": "Filter traces by HTTP method (GET, POST, etc.)"
+                "description": "Filter traces by HTTP method (GET, POST, etc.)",
             },
             "http_target": {
                 "type": "string",
-                "description": "Filter traces by HTTP target path, substring, glob patterns (e.g., /v2/facts/** or /v2/facts/*), or regex (e.g., ^/v2/facts/[0-9]+$)"
+                "description": "Filter traces by HTTP target path, substring, glob patterns (e.g., /v2/facts/** or /v2/facts/*), or regex (e.g., ^/v2/facts/[0-9]+$)",
             },
             "execution_run_id": {"type": "string"},
             "limit": {"type": "integer", "default": 20},
@@ -155,8 +155,8 @@ def query_grafana_traces(
                         break
                     span_name = s.get("name", "")
                     if span_name.upper().startswith(method_upper + " "):
-                         matches = True
-                         break
+                        matches = True
+                        break
                 if matches:
                     filtered_traces.append(t)
             traces = filtered_traces
@@ -171,8 +171,8 @@ def query_grafana_traces(
                         break
                     span_name = s.get("name", "")
                     if _match_target(http_target, span_name):
-                         matches = True
-                         break
+                        matches = True
+                        break
                 if matches:
                     filtered_traces.append(t)
             traces = filtered_traces
@@ -222,10 +222,7 @@ def query_grafana_traces(
     if trace_id:
         # Fetch details for the specific trace directly
         result = client._get_trace_details(trace_id)
-        traces = [{
-            "traceID": trace_id,
-            "spans": result.get("spans", [])
-        }]
+        traces = [{"traceID": trace_id, "spans": result.get("spans", [])}]
         total_traces = 1
     else:
         # Construct TraceQL query if http_method or http_target are specified,
@@ -235,17 +232,17 @@ def query_grafana_traces(
             method_part = http_method.upper() if http_method else ".*"
             if http_target:
                 target_clean = http_target
-                has_glob = '*' in target_clean or '?' in target_clean
+                has_glob = "*" in target_clean or "?" in target_clean
                 if has_glob:
                     escaped = re.escape(target_clean)
-                    regex_target = escaped.replace(r'\*', r'.*').replace(r'\?', r'.')
+                    regex_target = escaped.replace(r"\*", r".*").replace(r"\?", r".")
                 else:
                     regex_target = f".*{re.escape(target_clean)}.*"
             else:
                 regex_target = ".*"
-                
+
             name_regex = f"(?i)^{method_part} {regex_target}"
-            name_regex_escaped = name_regex.replace('\\', '\\\\')
+            name_regex_escaped = name_regex.replace("\\", "\\\\")
             q = f'{{.service.name="{service_name}" && name =~ "{name_regex_escaped}"}}'
 
         result = client.query_tempo(service_name, limit=limit, q=q)
@@ -271,8 +268,8 @@ def query_grafana_traces(
                     break
                 span_name = s.get("name", "")
                 if span_name.upper().startswith(method_upper + " "):
-                     matches = True
-                     break
+                    matches = True
+                    break
             if matches:
                 filtered_traces.append(t)
         traces = filtered_traces
@@ -288,8 +285,8 @@ def query_grafana_traces(
                     break
                 span_name = s.get("name", "")
                 if _match_target(http_target, span_name):
-                     matches = True
-                     break
+                    matches = True
+                    break
             if matches:
                 filtered_traces.append(t)
         traces = filtered_traces

@@ -33,9 +33,7 @@ class CoralApiRegistry:
         return dict(cls._functions)
 
     @classmethod
-    def available(
-        cls, sources: dict[str, dict]
-    ) -> dict[str, CoralApiFunction]:
+    def available(cls, sources: dict[str, dict]) -> dict[str, CoralApiFunction]:
         """Return only functions where is_available passes for given sources."""
         return {
             name: fn

@@ -1,4 +1,5 @@
 """Local HTTP bridge server exposing @coralapi functions to Coral."""
+
 from __future__ import annotations
 
 import json
@@ -69,7 +70,7 @@ class _BridgeHandler(BaseHTTPRequestHandler):
             self.send_error(404, "Not Found")
             return
 
-        table_name = path[len("/coral-api/"):]
+        table_name = path[len("/coral-api/") :]
         if not table_name:
             self.send_error(404, "Not Found")
             return

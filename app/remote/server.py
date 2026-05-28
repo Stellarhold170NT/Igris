@@ -413,6 +413,7 @@ def investigate(
 
         if x_background == "true":
             from app.cli.investigation import resolve_investigation_context
+
             alert_name, pipeline_name, severity = resolve_investigation_context(
                 raw_alert=raw_alert,
                 alert_name=req.alert_name,

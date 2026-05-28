@@ -1,4 +1,5 @@
 """Generate Coral manifest YAML for @coralapi bridge sources."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -31,10 +32,7 @@ def generate_bridge_manifest(func: CoralApiFunction, bridge_url: str) -> str:
                 "request": {
                     "method": "GET",
                     "path": "/",
-                    "query": [
-                        {"name": k, "from": "filter", "key": k}
-                        for k in func.filters
-                    ],
+                    "query": [{"name": k, "from": "filter", "key": k} for k in func.filters],
                 },
                 "response": {"rows_path": []},
                 "pagination": {"mode": "none"},
@@ -48,10 +46,7 @@ def generate_bridge_manifest(func: CoralApiFunction, bridge_url: str) -> str:
                     }
                     for col_name, col in func.columns.items()
                 ],
-                "filters": [
-                    {"name": k, "required": v.required}
-                    for k, v in func.filters.items()
-                ],
+                "filters": [{"name": k, "required": v.required} for k, v in func.filters.items()],
             }
         ],
     }

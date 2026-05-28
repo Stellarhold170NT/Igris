@@ -65,12 +65,9 @@ def vauthz_extract_params(sources: dict[str, dict]) -> dict[str, Any]:
             or "http://117.5.151.111:7766"
         ).strip(),
         "vauthz_url": str(
-            os.getenv("VAUTHZ_URL")
-            or vauthz.get("vauthz_url")
-            or "http://117.5.151.111:8081"
+            os.getenv("VAUTHZ_URL") or vauthz.get("vauthz_url") or "http://117.5.151.111:8081"
         ).strip(),
     }
-
 
 
 def list_pdps(pdp_syncheck_url: str) -> dict[str, Any]:
@@ -81,35 +78,37 @@ def list_pdps(pdp_syncheck_url: str) -> dict[str, Any]:
             resp = client.get(url)
             resp.raise_for_status()
             data = resp.json()
-            
+
             raw_pdps = data.get("pdps", [])
             filtered_pdps = []
-            
+
             # Filter pdps whose pdp_version contains "pdp"
             for pdp in raw_pdps:
                 pdp_version = str(pdp.get("pdp_version", ""))
                 if "pdp" in pdp_version.lower():
                     filtered_pdps.append(pdp)
-            
+
             # Count PDP instances grouped by env_id
             env_counts = Counter(p["env_id"] for p in filtered_pdps if p.get("env_id"))
-            
+
             processed_pdps = []
             for pdp in filtered_pdps:
                 env_id = pdp.get("env_id")
                 online = bool(pdp.get("is_healthy", False))
                 desc = "Hoạt động bình thường" if online else "PDP đã bị chết trên k8s server"
-                
-                processed_pdps.append({
-                    "pdp_id": pdp.get("id"),
-                    "env_id": env_id,
-                    "project_name": pdp.get("project_name"),
-                    "pdp_version": pdp.get("pdp_version"),
-                    "online": online,
-                    "desc": desc,
-                    "number_count": env_counts.get(env_id, 0),
-                })
-                
+
+                processed_pdps.append(
+                    {
+                        "pdp_id": pdp.get("id"),
+                        "env_id": env_id,
+                        "project_name": pdp.get("project_name"),
+                        "pdp_version": pdp.get("pdp_version"),
+                        "online": online,
+                        "desc": desc,
+                        "number_count": env_counts.get(env_id, 0),
+                    }
+                )
+
             return {"pdps": processed_pdps}
     except Exception as e:
         logger.error(f"Error fetching PDP fleet list from {url}: {e}")
@@ -149,9 +148,9 @@ def extract_and_group_events(events: list[dict[str, Any]]) -> dict[str, list[str
     for event in events:
         if event.get("event_type") != "OpalCallback":
             continue
-        
+
         paths: set[str] = set()
-        
+
         # Check details.verify_results
         verify_results = event.get("details", {})
         if isinstance(verify_results, dict):
@@ -160,7 +159,7 @@ def extract_and_group_events(events: list[dict[str, Any]]) -> dict[str, list[str
                 for r in vr:
                     if isinstance(r, dict) and "dst_path" in r:
                         paths.add(r["dst_path"])
-        
+
         # Check callback_info.delta_snapshots
         cb_info = event.get("callback_info", {})
         if isinstance(cb_info, dict):
@@ -169,7 +168,7 @@ def extract_and_group_events(events: list[dict[str, Any]]) -> dict[str, list[str
                 for s in delta:
                     if isinstance(s, dict) and "dst_path" in s:
                         paths.add(s["dst_path"])
-            
+
             # Check callback_info.raw_payload.reports
             payload = cb_info.get("raw_payload", {})
             if isinstance(payload, dict):
@@ -180,7 +179,7 @@ def extract_and_group_events(events: list[dict[str, Any]]) -> dict[str, list[str
                             entry = r.get("entry", {})
                             if isinstance(entry, dict) and "dst_path" in entry:
                                 paths.add(entry["dst_path"])
-        
+
         for path in paths:
             if not path:
                 continue
@@ -190,7 +189,7 @@ def extract_and_group_events(events: list[dict[str, Any]]) -> dict[str, list[str
                 if prefix not in grouped:
                     grouped[prefix] = set()
                 grouped[prefix].add(path)
-                
+
     return {k: sorted(list(v)) for k, v in grouped.items()}
 
 
@@ -297,20 +296,24 @@ def compare_pdp_data(
     # 1. Fetch events
     events_res = get_pdp_events(pdp_syncheck_url, pdp_id)
     if isinstance(events_res, dict) and "error" in events_res:
-        return {"pdp_id": pdp_id, "success": False, "error": f"Failed to fetch PDP events: {events_res['error']}"}
+        return {
+            "pdp_id": pdp_id,
+            "success": False,
+            "error": f"Failed to fetch PDP events: {events_res['error']}",
+        }
 
     # events API returns {"pdp_id": ..., "events": [...]}
     if isinstance(events_res, dict):
         events = events_res.get("events", [])
     else:
         events = events_res if isinstance(events_res, list) else []
-    
+
     # 2. Extract and group events
     grouped_events = extract_and_group_events(events)
-    
+
     # 3. Extract auth token
     token = extract_auth_token(events)
-    
+
     # 4. Determine env_id
     if not env_id:
         # Try to extract from event topics
@@ -325,7 +328,7 @@ def compare_pdp_data(
                             break
             if env_id:
                 break
-        
+
         # Fallback to list_pdps lookup
         if not env_id:
             fleet = list_pdps(pdp_syncheck_url)
@@ -333,20 +336,24 @@ def compare_pdp_data(
                 if pdp.get("pdp_id") == pdp_id:
                     env_id = pdp.get("env_id")
                     break
-                    
+
     if not env_id:
-        return {"pdp_id": pdp_id, "success": False, "error": "Could not determine env_id for the PDP."}
-        
+        return {
+            "pdp_id": pdp_id,
+            "success": False,
+            "error": "Could not determine env_id for the PDP.",
+        }
+
     # 5. Fetch DB data
     db_data_url = get_db_data_url(vauthz_url, env_id)
-    
+
     # 6. Fetch OPA data
     pdp_data_url = get_pdp_data_url(pdp_gateway_url)
-    
+
     opa_data = None
     db_data = None
     errors = {}
-    
+
     with httpx.Client(timeout=10.0) as client:
         # Fetch DB data
         try:
@@ -356,7 +363,7 @@ def compare_pdp_data(
         except Exception as e:
             logger.error(f"Error fetching DB data from {db_data_url}: {e}")
             errors["db_error"] = str(e)
-            
+
         # Fetch OPA data (requires X-pdp-name header)
         try:
             headers = {}
@@ -378,7 +385,7 @@ def compare_pdp_data(
         except Exception as e:
             logger.error(f"Error fetching OPA data from {pdp_data_url}: {e}")
             errors["opa_error"] = str(e)
-            
+
     if errors:
         return {
             "pdp_id": pdp_id,
@@ -387,17 +394,17 @@ def compare_pdp_data(
             "events": grouped_events,
             **errors,
         }
-        
+
     # Remove null fields from db_data
     db_data = remove_null_fields(db_data)
-    
+
     # Filter both to only compare common keys, ignoring irrelevant fields
     if isinstance(opa_data, dict) and isinstance(db_data, dict):
         common_keys = set(db_data.keys()).intersection(set(opa_data.keys()))
         common_keys.discard("vauthz")
         opa_data = {k: opa_data[k] for k in common_keys}
         db_data = {k: db_data[k] for k in common_keys}
-        
+
     # Compare using direct subtraction
     try:
         diff_res = diff_db_minus_opa(db_data, opa_data) or {}

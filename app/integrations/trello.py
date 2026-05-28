@@ -210,3 +210,35 @@ def get_trello_board(
         f"/boards/{target_board_id}",
     )
     return payload if isinstance(payload, dict) else {}
+
+
+def attach_file_to_trello_card(
+    *,
+    config: TrelloConfig,
+    card_id: str,
+    file_path: str,
+    name: str = "",
+) -> dict[str, Any]:
+    from pathlib import Path
+
+    path = Path(file_path)
+    if not path.exists():
+        logger.warning("[trello] attachment file not found: %s", file_path)
+        return {}
+
+    url = f"{config.api_base_url}/cards/{card_id}/attachments"
+    params: dict[str, str] = {"key": config.api_key, "token": config.token}
+    data: dict[str, str] = {}
+    if name:
+        data["name"] = name
+
+    try:
+        with path.open("rb") as f:
+            files = {"file": (path.name, f, "application/pdf")}
+            response = httpx.post(url, params=params, data=data, files=files, timeout=60.0)
+        response.raise_for_status()
+        result = response.json()
+        return result if isinstance(result, dict) else {}
+    except Exception as exc:
+        logger.warning("[trello] failed to attach file to card %s: %s", card_id, exc)
+        return {}

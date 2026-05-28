@@ -178,7 +178,13 @@ def test_empty_json_array_falls_through_to_legacy(
         (
             "MARIADB_INSTANCES",
             "mariadb",
-            {"name": "prod", "host": "10.0.0.110", "database": "db1", "username": "u", "password": "p"},
+            {
+                "name": "prod",
+                "host": "10.0.0.110",
+                "database": "db1",
+                "username": "u",
+                "password": "p",
+            },
         ),
     ],
 )

@@ -67,4 +67,3 @@ def get_mariadb_global_status(
             "WARNING: No database was specified; defaulted to 'mysql'. Results may not reflect application data."
         )
     return result
-

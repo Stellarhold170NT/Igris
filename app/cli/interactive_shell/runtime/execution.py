@@ -172,6 +172,7 @@ def execute_routed_turn(
 
     if session.tool_calling:
         from app.cli.interactive_shell.chat.tool_agent import answer_with_tools
+
         with apply_reasoning_effort(session.reasoning_effort):
             answer_with_tools(text, session, console, confirm_fn=confirm_fn)
         assistant_text = ""

@@ -74,7 +74,9 @@ def kafka_extract_params(sources: dict[str, dict]) -> dict[str, Any]:
     kf = sources.get("kafka", {})
     cred = kf.get("credentials", {})
     return {
-        "bootstrap_servers": str(kf.get("bootstrap_servers") or cred.get("bootstrap_servers", "")).strip(),
+        "bootstrap_servers": str(
+            kf.get("bootstrap_servers") or cred.get("bootstrap_servers", "")
+        ).strip(),
         "security_protocol": str(
             kf.get("security_protocol")
             or cred.get("security_protocol")
@@ -256,6 +258,7 @@ def get_consumer_group(
 
     try:
         from confluent_kafka import TopicPartition
+
         try:
             from confluent_kafka import ConsumerGroupTopicPartitions
         except ImportError:
@@ -270,7 +273,9 @@ def get_consumer_group(
             try:
                 list_groups_future = admin.list_consumer_groups()
                 list_groups_res = list_groups_future.result()
-                all_groups = [g.group_id for g in list_groups_res.valid] if list_groups_res.valid else []
+                all_groups = (
+                    [g.group_id for g in list_groups_res.valid] if list_groups_res.valid else []
+                )
                 if all_groups:
                     if group_id in all_groups:
                         target_group = group_id
@@ -313,7 +318,7 @@ def get_consumer_group(
                         for tp in member.assignment.topic_partitions:
                             assignment_map[(tp.topic, tp.partition)] = {
                                 "consumer_id": member_id,
-                                "host": host
+                                "host": host,
                             }
             except Exception as desc_err:
                 logger.warning("Failed to describe consumer group members: %s", desc_err)
@@ -409,6 +414,7 @@ def get_topic_consumers(
 
     try:
         from confluent_kafka import TopicPartition
+
         try:
             from confluent_kafka import ConsumerGroupTopicPartitions
         except ImportError:
@@ -458,7 +464,9 @@ def get_topic_consumers(
             try:
                 list_groups_future = admin.list_consumer_groups()
                 list_groups_res = list_groups_future.result()
-                all_groups = [g.group_id for g in list_groups_res.valid] if list_groups_res.valid else []
+                all_groups = (
+                    [g.group_id for g in list_groups_res.valid] if list_groups_res.valid else []
+                )
             except Exception as list_err:
                 logger.warning("Failed to list consumer groups: %s", list_err)
                 all_groups = []
@@ -506,7 +514,7 @@ def get_topic_consumers(
                                     has_topic_in_assignments = True
                                 assignment_map[(tp.topic, tp.partition)] = {
                                     "consumer_id": member_id,
-                                    "host": host
+                                    "host": host,
                                 }
                 except Exception:
                     pass
@@ -521,7 +529,9 @@ def get_topic_consumers(
                             if tp.topic == target_topic:
                                 partitions_to_check.add((tp.partition, tp.offset))
 
-                    assigned_partitions = {p for (t, p) in assignment_map.keys() if t == target_topic}
+                    assigned_partitions = {
+                        p for (t, p) in assignment_map.keys() if t == target_topic
+                    }
                     for p in assigned_partitions:
                         if not any(part == p for (part, _) in partitions_to_check):
                             partitions_to_check.add((p, -1))
@@ -540,23 +550,27 @@ def get_topic_consumers(
                             lag = 0
 
                         member_info = assignment_map.get((target_topic, partition), {})
-                        partitions_detail.append({
-                            "partition": partition,
-                            "committed_offset": committed,
-                            "high_watermark": hi,
-                            "lag": lag,
-                            "consumer_id": member_info.get("consumer_id", ""),
-                            "host": member_info.get("host", ""),
-                        })
+                        partitions_detail.append(
+                            {
+                                "partition": partition,
+                                "committed_offset": committed,
+                                "high_watermark": hi,
+                                "lag": lag,
+                                "consumer_id": member_info.get("consumer_id", ""),
+                                "host": member_info.get("host", ""),
+                            }
+                        )
                         topic_lag += lag
 
                     clean_state = state.split(".")[-1] if state else "UNKNOWN"
-                    consumers_info.append({
-                        "group_id": gid,
-                        "state": clean_state,
-                        "topic_lag": topic_lag,
-                        "partitions": partitions_detail,
-                    })
+                    consumers_info.append(
+                        {
+                            "group_id": gid,
+                            "state": clean_state,
+                            "topic_lag": topic_lag,
+                            "partitions": partitions_detail,
+                        }
+                    )
 
             return {
                 "source": "kafka",

@@ -66,7 +66,9 @@ class TempoMixin:
                 start_time_str = ""
                 if start_time_nano:
                     try:
-                        dt = datetime.datetime.fromtimestamp(float(start_time_nano) / 1e9, tz=datetime.timezone.utc)
+                        dt = datetime.datetime.fromtimestamp(
+                            float(start_time_nano) / 1e9, tz=datetime.timezone.utc
+                        )
                         start_time_str = dt.isoformat()
                     except Exception:
                         start_time_str = str(start_time_nano)
@@ -138,24 +140,29 @@ class TempoMixin:
                                 if "spans" in scope:
                                     for span in scope["spans"]:
                                         attributes = self._extract_span_attributes(span)  # type: ignore[attr-defined]
-                                        
+
                                         # Convert span start time
                                         span_start = span.get("startTimeUnixNano")
                                         span_start_str = ""
                                         if span_start:
                                             try:
-                                                dt = datetime.datetime.fromtimestamp(float(span_start) / 1e9, tz=datetime.timezone.utc)
+                                                dt = datetime.datetime.fromtimestamp(
+                                                    float(span_start) / 1e9,
+                                                    tz=datetime.timezone.utc,
+                                                )
                                                 span_start_str = dt.isoformat()
                                             except Exception:
                                                 span_start_str = str(span_start)
-                                                
+
                                         # Calculate span duration in ms
                                         start_nano = span.get("startTimeUnixNano")
                                         end_nano = span.get("endTimeUnixNano")
                                         duration_ms = 0.0
                                         if start_nano and end_nano:
                                             try:
-                                                duration_ms = (int(end_nano) - int(start_nano)) / 1e6
+                                                duration_ms = (
+                                                    int(end_nano) - int(start_nano)
+                                                ) / 1e6
                                             except Exception:
                                                 pass
 

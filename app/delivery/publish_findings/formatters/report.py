@@ -19,6 +19,7 @@ from app.delivery.publish_findings.urls.aws import build_cloudwatch_url
 
 def _t(text: str) -> str:
     import os
+
     if os.getenv("OPENSRE_LANGUAGE", "en").strip().lower() not in ("vi", "vietnamese"):
         return text
     translations = {
@@ -265,7 +266,9 @@ def _severity_telegram_header(ctx: ReportContext) -> str:
     display_sev = raw.upper() if raw else "UNKNOWN"
     alert = html.escape(str(ctx.get("alert_name") or "Alert"))
     pipeline = html.escape(str(ctx.get("pipeline_name") or "unknown"))
-    return f"{emoji} <b>{alert}</b> · {pipeline}\n<i>{_t('severity')}: {html.escape(display_sev)}</i>"
+    return (
+        f"{emoji} <b>{alert}</b> · {pipeline}\n<i>{_t('severity')}: {html.escape(display_sev)}</i>"
+    )
 
 
 def _render_claim_lines_telegram(ctx: ReportContext) -> tuple[list[str], list[str]]:
@@ -509,7 +512,9 @@ def format_slack_message(ctx: ReportContext) -> str:
         conclusion_block += f"\n## {_t('Findings')}\n" + "\n".join(validated_lines) + "\n"
     if non_validated_lines:
         conclusion_block += (
-            f"\n*{_t('Non-Validated Claims (Inferred)')}:*\n" + "\n".join(non_validated_lines) + "\n"
+            f"\n*{_t('Non-Validated Claims (Inferred)')}:*\n"
+            + "\n".join(non_validated_lines)
+            + "\n"
         )
 
     correlation_signal_lines, correlation_driver_lines = _format_correlation_lines(ctx)
@@ -521,7 +526,9 @@ def format_slack_message(ctx: ReportContext) -> str:
             )
         if correlation_driver_lines:
             conclusion_block += (
-                f"*{_t('Most likely causal drivers')}:*\n" + "\n".join(correlation_driver_lines) + "\n"
+                f"*{_t('Most likely causal drivers')}:*\n"
+                + "\n".join(correlation_driver_lines)
+                + "\n"
             )
 
     provenance_lines = _format_provenance_lines(ctx)
@@ -597,7 +604,9 @@ def format_telegram_message(ctx: ReportContext) -> str:
     if validated_lines:
         parts.append(f"<b>{_t('Findings')}</b>\n" + "\n".join(validated_lines))
     if non_validated_lines:
-        parts.append(f"<b>{_t('Non-Validated Claims (Inferred)')}</b>\n" + "\n".join(non_validated_lines))
+        parts.append(
+            f"<b>{_t('Non-Validated Claims (Inferred)')}</b>\n" + "\n".join(non_validated_lines)
+        )
 
     provenance_lines = _format_provenance_lines(ctx)
     if provenance_lines:
@@ -682,7 +691,9 @@ def format_whatsapp_message(ctx: ReportContext) -> str:
     # Recommended actions
     remediation_steps = ctx.get("remediation_steps", [])
     if remediation_steps:
-        parts.append(f"*{_t('Recommended Actions')}*\n" + "\n".join(f"• {s}" for s in remediation_steps))
+        parts.append(
+            f"*{_t('Recommended Actions')}*\n" + "\n".join(f"• {s}" for s in remediation_steps)
+        )
 
     # Investigation trace
     trace_steps = build_investigation_trace(ctx)
@@ -740,6 +751,7 @@ def build_slack_blocks(ctx: ReportContext) -> list[dict]:
     ]
     if len(all_pods) > 5:
         import os
+
         lang_vi = os.getenv("OPENSRE_LANGUAGE", "en").strip().lower() in ("vi", "vietnamese")
         more_count = len(all_pods) - 5
         suffix = f"và {more_count} pod khác" if lang_vi else f"... and {more_count} more pods"
@@ -766,7 +778,11 @@ def build_slack_blocks(ctx: ReportContext) -> list[dict]:
         )
         _add(_mrkdwn_section("\n".join(validated_lines)))
     if non_validated_lines:
-        _add(_mrkdwn_section(f"*{_t('Inferred (not yet validated)')}*\n" + "\n".join(non_validated_lines)))
+        _add(
+            _mrkdwn_section(
+                f"*{_t('Inferred (not yet validated)')}*\n" + "\n".join(non_validated_lines)
+            )
+        )
 
     correlation_signal_lines, correlation_driver_lines = _format_correlation_lines(ctx)
     if correlation_signal_lines or correlation_driver_lines:
@@ -778,7 +794,11 @@ def build_slack_blocks(ctx: ReportContext) -> list[dict]:
             }
         )
         if correlation_signal_lines:
-            _add(_mrkdwn_section(f"*{_t('Correlated signals')}:*\n" + "\n".join(correlation_signal_lines)))
+            _add(
+                _mrkdwn_section(
+                    f"*{_t('Correlated signals')}:*\n" + "\n".join(correlation_signal_lines)
+                )
+            )
         if correlation_driver_lines:
             _add(
                 _mrkdwn_section(

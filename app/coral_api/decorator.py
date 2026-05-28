@@ -60,9 +60,7 @@ def coralapi(
     if filters is not None:
         normalized_filters = {k: _normalize_filter(v) for k, v in filters.items()}
 
-    def decorator(
-        func: Callable[..., list[dict[str, Any]]]
-    ) -> Callable[..., list[dict[str, Any]]]:
+    def decorator(func: Callable[..., list[dict[str, Any]]]) -> Callable[..., list[dict[str, Any]]]:
         wrapped = functools.wraps(func)(func)
 
         api_fn = CoralApiFunction(

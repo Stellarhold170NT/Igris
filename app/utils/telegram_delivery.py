@@ -5,7 +5,10 @@ from __future__ import annotations
 import contextlib
 import logging
 import re
+from pathlib import Path
 from typing import Any
+
+import httpx
 
 from app.utils.delivery_transport import post_json
 from app.utils.truncation import truncate
@@ -195,3 +198,38 @@ def send_telegram_report(
         reply_markup=reply_markup,
     )
     return (True, "") if post_success else (False, error)
+
+
+def send_telegram_document(
+    chat_id: str,
+    document_path: str,
+    bot_token: str,
+    caption: str = "",
+    reply_to_message_id: str = "",
+) -> tuple[bool, str, str]:
+    path = Path(document_path)
+    if not path.exists():
+        return False, f"Document not found: {document_path}", ""
+
+    url = f"https://api.telegram.org/bot{bot_token}/sendDocument"
+    data: dict[str, Any] = {"chat_id": chat_id}
+    if caption:
+        data["caption"] = caption[:1024]
+    if reply_to_message_id and reply_to_message_id != "0":
+        with contextlib.suppress(ValueError, TypeError):
+            data["reply_to_message_id"] = int(reply_to_message_id)
+
+    try:
+        with path.open("rb") as f:
+            files = {"document": (path.name, f, "application/pdf")}
+            response = httpx.post(url, data=data, files=files, timeout=60.0)
+    except Exception as exc:
+        return False, str(exc), ""
+
+    if response.status_code != 200:
+        error_msg = response.text or f"HTTP {response.status_code}"
+        return False, error_msg, ""
+
+    result = response.json().get("result", {})
+    message_id = str(result.get("message_id") or "") if isinstance(result, dict) else ""
+    return True, "", message_id

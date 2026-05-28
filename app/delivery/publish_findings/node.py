@@ -28,15 +28,18 @@ def _get_trello_config(resolved: dict[str, Any]) -> Any | None:
         creds = trello_int.get("credentials") or {}
         if creds.get("api_key") and creds.get("token"):
             from app.integrations.trello import build_trello_config
+
             return build_trello_config(creds)
 
     from app.integrations.trello import trello_config_from_env
+
     return trello_config_from_env()
 
 
 def _slack_to_markdown(text: str) -> str:
     """Convert Slack-specific link formatting <url|label> to standard Markdown [label](url)."""
     import re
+
     # Strip ANSI color and format escape sequences
     text = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", text)
     text = re.sub(r"<([^>|]+)\|([^>]+)>", r"[\2](\1)", text)
@@ -73,7 +76,9 @@ def generate_report(state: InvestigationState) -> dict:
     render_report(slack_message, root_cause_category=state.get("root_cause_category"))
     is_scheduled = False
     raw_alert = state.get("raw_alert") or {}
-    source = state.get("source") or (raw_alert.get("source") if isinstance(raw_alert, dict) else None)
+    source = state.get("source") or (
+        raw_alert.get("source") if isinstance(raw_alert, dict) else None
+    )
     if source and isinstance(source, str) and source.startswith("scheduled_"):
         is_scheduled = True
     if state.get("task_id") or (isinstance(raw_alert, dict) and raw_alert.get("task_id")):
@@ -159,7 +164,9 @@ def generate_report(state: InvestigationState) -> dict:
                 channel_id,
             )
     else:
-        logger.debug("[publish] discord delivery: no discord integration configured or run is scheduled")
+        logger.debug(
+            "[publish] discord delivery: no discord integration configured or run is scheduled"
+        )
 
     # Telegram delivery — uses integration credentials if configured
     telegram_creds = resolved.get("telegram", {})
@@ -195,7 +202,9 @@ def generate_report(state: InvestigationState) -> dict:
                 chat_id,
             )
     else:
-        logger.debug("[publish] telegram delivery: no telegram integration configured or run is scheduled")
+        logger.debug(
+            "[publish] telegram delivery: no telegram integration configured or run is scheduled"
+        )
 
     # WhatsApp delivery — uses integration credentials if configured
     whatsapp_creds = resolved.get("whatsapp", {})
@@ -240,7 +249,9 @@ def generate_report(state: InvestigationState) -> dict:
                 bool(to),
             )
     else:
-        logger.debug("[publish] whatsapp delivery: no whatsapp integration configured or run is scheduled")
+        logger.debug(
+            "[publish] whatsapp delivery: no whatsapp integration configured or run is scheduled"
+        )
 
     # Twilio SMS — dispatched independently of the legacy WhatsApp record
     # above. WhatsApp delivery is owned solely by the ``whatsapp`` integration.
@@ -308,7 +319,9 @@ def generate_report(state: InvestigationState) -> dict:
                     bool(auth_token),
                 )
     else:
-        logger.debug("[publish] twilio sms delivery: no twilio integration configured or run is scheduled")
+        logger.debug(
+            "[publish] twilio sms delivery: no twilio integration configured or run is scheduled"
+        )
 
     openclaw_creds = resolved.get("openclaw", {})
     if openclaw_creds and not is_scheduled:
@@ -355,6 +368,7 @@ def generate_report(state: InvestigationState) -> dict:
             if board_id:
                 try:
                     from app.integrations.trello import get_trello_board
+
                     board_info = get_trello_board(config=trello_config, board_id=board_id)
                     long_board_id = board_info.get("id") or board_id
                 except Exception as e:
@@ -363,13 +377,19 @@ def generate_report(state: InvestigationState) -> dict:
 
                 lists = get_trello_board_lists(config=trello_config, board_id=long_board_id)
                 matched_list = next(
-                    (lst for lst in lists if lst.get("name", "").strip().lower() == pipeline_name.strip().lower()),
-                    None
+                    (
+                        lst
+                        for lst in lists
+                        if lst.get("name", "").strip().lower() == pipeline_name.strip().lower()
+                    ),
+                    None,
                 )
                 if matched_list:
                     list_id = matched_list["id"]
                 else:
-                    new_list = create_trello_list(config=trello_config, board_id=long_board_id, name=pipeline_name)
+                    new_list = create_trello_list(
+                        config=trello_config, board_id=long_board_id, name=pipeline_name
+                    )
                     list_id = new_list.get("id")
 
             if not list_id:
@@ -381,7 +401,11 @@ def generate_report(state: InvestigationState) -> dict:
                 desc=card_desc,
                 list_id=list_id,
             )
-            logger.info("[publish] Trello card created successfully: %s (ID: %s)", card.get("name"), card.get("id"))
+            logger.info(
+                "[publish] Trello card created successfully: %s (ID: %s)",
+                card.get("name"),
+                card.get("id"),
+            )
         except Exception as exc:
             logger.warning("[publish] Failed to create Trello card: %s", exc)
 

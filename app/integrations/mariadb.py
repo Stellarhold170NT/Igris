@@ -178,7 +178,6 @@ def resolve_mariadb_config(
     )
 
 
-
 def _get_connection(config: MariaDBConfig) -> Any:
     """Create a pymysql connection from config. Caller must close."""
     import ssl as _ssl
@@ -582,4 +581,3 @@ def get_databases(config: MariaDBConfig) -> dict[str, Any]:
             method="get_databases",
         )
         return {"source": "mariadb", "available": False, "error": str(err)}
-

@@ -111,6 +111,7 @@ class TestMessageBuilders:
         )
 
         from typing import Any
+
         def _mock_build_replay(_t: ScheduledTask) -> tuple[str, dict[str, Any]]:
             raise RuntimeError("Pipeline failed")
 
@@ -128,6 +129,7 @@ class TestMessageBuilders:
         )
 
         from typing import Any
+
         def _mock_build_custom(_t: ScheduledTask) -> tuple[str, dict[str, Any]]:
             raise RuntimeError("Custom investigation failed")
 
@@ -238,7 +240,9 @@ class TestMessageBuilders:
             lambda _report, _cond: False,
         )
 
-        with pytest.raises(SkipDeliveryException, match="Notification policy 'gửi khi có lỗi' not met"):
+        with pytest.raises(
+            SkipDeliveryException, match="Notification policy 'gửi khi có lỗi' not met"
+        ):
             tasks_mod.build_message(task)
 
     def test_custom_investigation_resolves_skills(self, monkeypatch: pytest.MonkeyPatch) -> None:

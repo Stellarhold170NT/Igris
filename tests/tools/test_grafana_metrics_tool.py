@@ -112,4 +112,3 @@ def test_run_with_metric_alias() -> None:
     assert result["available"] is True
     assert result["metric_name"] == "node_memory_MemAvailable_bytes"
     mock_backend.query_timeseries.assert_called_once_with(query="node_memory_MemAvailable_bytes")
-

@@ -274,9 +274,7 @@ class TestKafkaConsumerGroupRun:
             "available": False,
             "error": "Group 'stale-consumer' does not exist.",
         }
-        with patch(
-            "app.tools.KafkaConsumerGroupTool.get_consumer_group", return_value=fake_error
-        ):
+        with patch("app.tools.KafkaConsumerGroupTool.get_consumer_group", return_value=fake_error):
             result = get_kafka_consumer_group(
                 bootstrap_servers="broker1:9092",
                 group_id="stale-consumer",

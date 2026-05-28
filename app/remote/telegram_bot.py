@@ -109,7 +109,7 @@ def _format_markdown_tables(text: str) -> str:
     def flush_table():
         if not table_lines:
             return []
-        
+
         parsed_rows = []
         for line in table_lines:
             stripped = line.strip()
@@ -147,7 +147,9 @@ def _format_markdown_tables(text: str) -> str:
                 sep_cells = ["-" * (widths[c_idx] + 2) for c_idx in range(cols_count)]
                 formatted_lines.append("|" + "|".join(sep_cells) + "|")
             else:
-                formatted_cells = [f" {row[c_idx].ljust(widths[c_idx])} " for c_idx in range(cols_count)]
+                formatted_cells = [
+                    f" {row[c_idx].ljust(widths[c_idx])} " for c_idx in range(cols_count)
+                ]
                 formatted_lines.append("|" + "|".join(formatted_cells) + "|")
 
         table_text = "\n".join(formatted_lines)
@@ -155,11 +157,10 @@ def _format_markdown_tables(text: str) -> str:
 
     for line in lines:
         stripped = line.strip()
-        is_table_line = (
-            (stripped.startswith("|") and stripped.endswith("|"))
-            or (stripped.count("|") >= 2 and re.match(r"^\|?.*\|.*\|?$", stripped))
+        is_table_line = (stripped.startswith("|") and stripped.endswith("|")) or (
+            stripped.count("|") >= 2 and re.match(r"^\|?.*\|.*\|?$", stripped)
         )
-        
+
         if is_table_line:
             if not in_table:
                 in_table = True
@@ -259,9 +260,7 @@ def _run_react_chat(chat_id: str, user_text: str, reply_to: str) -> None:
         if isinstance(llm, AnthropicAgentClient):
             messages.append(llm.build_assistant_message(response.raw_content))
         else:
-            messages.append(
-                llm.build_assistant_message(response.content, response.tool_calls)
-            )
+            messages.append(llm.build_assistant_message(response.content, response.tool_calls))
 
         # No tool calls → final answer
         if not response.has_tool_calls:
@@ -294,7 +293,6 @@ def _run_react_chat(chat_id: str, user_text: str, reply_to: str) -> None:
             if len(out_str) > 500:
                 out_str = out_str[:500] + "…"
             tool_summaries.append(f"⚡ {tc.name} → {out_str}")
-
 
         # Feed results back to LLM
         if isinstance(llm, AnthropicAgentClient):
@@ -412,7 +410,9 @@ def _handle_message(message: dict[str, Any]) -> None:
 
     # Optional: restrict to configured chat
     if _ALLOWED_CHAT_ID and chat_id != _ALLOWED_CHAT_ID:
-        logger.debug("[telegram] Ignoring message from chat %s (allowed: %s)", chat_id, _ALLOWED_CHAT_ID)
+        logger.debug(
+            "[telegram] Ignoring message from chat %s (allowed: %s)", chat_id, _ALLOWED_CHAT_ID
+        )
         return
 
     logger.info("[telegram] Message from chat %s: %s", chat_id, text[:100])
@@ -421,6 +421,7 @@ def _handle_message(message: dict[str, Any]) -> None:
     # Skill Injection and Suggestions
     # ----------------------------------------------------
     from app.cli.commands.skill import load_skills
+
     skills = load_skills()
 
     # List all skills if user types exactly /skills, /skill, or @
@@ -462,6 +463,7 @@ def _handle_message(message: dict[str, Any]) -> None:
             )
             return
         from app.cli.commands.skill import resolve_skills_in_text
+
         alert_text = resolve_skills_in_text(alert_text)
         _run_investigation(chat_id, alert_text, reply_to=message_id)
         return
@@ -480,6 +482,7 @@ def _handle_message(message: dict[str, Any]) -> None:
             )
             return
         from app.cli.commands.skill import resolve_skills_in_text
+
         user_text = resolve_skills_in_text(user_text)
         _run_react_chat(chat_id, user_text, reply_to=message_id)
         return
@@ -494,6 +497,7 @@ def _handle_message(message: dict[str, Any]) -> None:
         return
 
     from app.cli.commands.skill import resolve_skills_in_text
+
     text = resolve_skills_in_text(text)
     _run_react_chat(chat_id, text, reply_to=message_id)
 
@@ -590,6 +594,7 @@ def main() -> None:
     # Suppress OpenSRE's Rich progress tracker
     try:
         from app.cli.support.output import set_silent_tracker
+
         set_silent_tracker()
     except Exception:
         pass

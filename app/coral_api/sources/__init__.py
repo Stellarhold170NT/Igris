@@ -1,4 +1,5 @@
 """Example @coralapi sources demonstrating the bridge pattern."""
+
 from __future__ import annotations
 
 from app.coral_api.decorator import coralapi

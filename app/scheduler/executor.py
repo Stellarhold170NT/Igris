@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import sys
 from typing import Any
@@ -14,7 +15,7 @@ from app.scheduler.credentials import (
     resolve_telegram_credentials,
 )
 from app.scheduler.tasks import build_message
-from app.scheduler.types import Provider, ScheduledTask, TaskStatus, SkipDeliveryException
+from app.scheduler.types import Provider, ScheduledTask, SkipDeliveryException, TaskStatus
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,9 @@ def execute_task(
         _emit_analytics(task, TaskStatus.SUCCESS)
         logger.info("Task %s completed but skipped delivery: %s", task.id, exc.reason)
 
-        sys.stderr.write(f"\n[Notification Gatekeeper] AI Decision: Skip delivery -> {exc.reason}\n")
+        sys.stderr.write(
+            f"\n[Notification Gatekeeper] AI Decision: Skip delivery -> {exc.reason}\n"
+        )
         _log_task_channels(task, skipped=True)
         sys.stderr.write("\n")
 
@@ -79,28 +82,45 @@ def execute_task(
         _record_failure(task, fire_time, f"Message build error: {type(exc).__name__}")
         return False
 
+    # --- Snapshot + PDF Report phase ---
+    pdf_path = _maybe_generate_pdf_report(task, resolved_integrations)
+    if pdf_path:
+        resolved_integrations["_pdf_path"] = str(pdf_path)
+
     # --- Delivery phase: only send to channels configured in the task ---
-    sys.stderr.write(f"\n[Notification Gatekeeper] AI Decision: Approved delivery -> Condition met.\n")
+    sys.stderr.write(
+        "\n[Notification Gatekeeper] AI Decision: Approved delivery -> Condition met.\n"
+    )
 
     # 1. Chat channel delivery
     chat_ok, chat_error, message_id = _deliver(task, message, resolved_integrations)
     if chat_ok:
-        sys.stderr.write(f"[Notification Gatekeeper] Chat channel '{task.provider.value.upper()}' -> Delivered to '{task.chat_id}' (id={message_id})\n")
+        sys.stderr.write(
+            f"[Notification Gatekeeper] Chat channel '{task.provider.value.upper()}' -> Delivered to '{task.chat_id}' (id={message_id})\n"
+        )
     elif task.chat_id:
-        sys.stderr.write(f"[Notification Gatekeeper] Chat channel '{task.provider.value.upper()}' -> FAILED: {chat_error}\n")
+        sys.stderr.write(
+            f"[Notification Gatekeeper] Chat channel '{task.provider.value.upper()}' -> FAILED: {chat_error}\n"
+        )
     else:
-        sys.stderr.write(f"[Notification Gatekeeper] Chat channel '{task.provider.value.upper()}' -> Skipped (no chat_id configured)\n")
+        sys.stderr.write(
+            f"[Notification Gatekeeper] Chat channel '{task.provider.value.upper()}' -> Skipped (no chat_id configured)\n"
+        )
 
     # 2. Trello delivery (task management)
     trello_ok = False
     if task.trello_board_id:
         trello_ok, trello_error = _deliver_trello(task, message, resolved_integrations)
         if trello_ok:
-            sys.stderr.write(f"[Notification Gatekeeper] Trello -> Card created on board '{task.trello_board_id}'\n")
+            sys.stderr.write(
+                f"[Notification Gatekeeper] Trello -> Card created on board '{task.trello_board_id}'\n"
+            )
         else:
             sys.stderr.write(f"[Notification Gatekeeper] Trello -> FAILED: {trello_error}\n")
     else:
-        sys.stderr.write("[Notification Gatekeeper] Trello -> Skipped (no trello_board_id configured)\n")
+        sys.stderr.write(
+            "[Notification Gatekeeper] Trello -> Skipped (no trello_board_id configured)\n"
+        )
 
     sys.stderr.write("\n")
 
@@ -127,11 +147,17 @@ def _log_task_channels(task: ScheduledTask, *, skipped: bool) -> None:
     """Log the task-configured channels and their suppression status."""
     action = "suppressed" if skipped else "ready"
     if task.chat_id:
-        sys.stderr.write(f"[Notification Gatekeeper] Chat '{task.provider.value.upper()}' (chat_id: '{task.chat_id}') -> {action}\n")
+        sys.stderr.write(
+            f"[Notification Gatekeeper] Chat '{task.provider.value.upper()}' (chat_id: '{task.chat_id}') -> {action}\n"
+        )
     else:
-        sys.stderr.write(f"[Notification Gatekeeper] Chat '{task.provider.value.upper()}' -> not configured (no chat_id)\n")
+        sys.stderr.write(
+            f"[Notification Gatekeeper] Chat '{task.provider.value.upper()}' -> not configured (no chat_id)\n"
+        )
     if task.trello_board_id:
-        sys.stderr.write(f"[Notification Gatekeeper] Trello (board: '{task.trello_board_id}') -> {action}\n")
+        sys.stderr.write(
+            f"[Notification Gatekeeper] Trello (board: '{task.trello_board_id}') -> {action}\n"
+        )
     else:
         sys.stderr.write("[Notification Gatekeeper] Trello -> not configured\n")
 
@@ -174,7 +200,9 @@ def _deliver_trello(
     # Resolve Trello credentials
     trello_int = resolved_integrations.get("trello")
     if trello_int and isinstance(trello_int, dict):
-        api_key = trello_int.get("api_key") or trello_int.get("credentials", {}).get("api_key") or ""
+        api_key = (
+            trello_int.get("api_key") or trello_int.get("credentials", {}).get("api_key") or ""
+        )
         token = trello_int.get("token") or trello_int.get("credentials", {}).get("token") or ""
     else:
         api_key = ""
@@ -190,16 +218,18 @@ def _deliver_trello(
         from app.integrations.trello import (
             build_trello_config,
             create_trello_card,
-            get_trello_board_lists,
             create_trello_list,
             get_trello_board,
+            get_trello_board_lists,
         )
 
-        config = build_trello_config({
-            "api_key": api_key,
-            "token": token,
-            "board_id": task.trello_board_id,
-        })
+        config = build_trello_config(
+            {
+                "api_key": api_key,
+                "token": token,
+                "board_id": task.trello_board_id,
+            }
+        )
 
         # Resolve the target list on the board
         pipeline_name = task.params.get("pipeline_name") or "Scheduled Investigations"
@@ -211,7 +241,11 @@ def _deliver_trello(
 
         lists = get_trello_board_lists(config=config, board_id=long_board_id)
         matched_list = next(
-            (lst for lst in lists if lst.get("name", "").strip().lower() == pipeline_name.strip().lower()),
+            (
+                lst
+                for lst in lists
+                if lst.get("name", "").strip().lower() == pipeline_name.strip().lower()
+            ),
             None,
         )
         if matched_list:
@@ -239,7 +273,9 @@ def _deliver_trello(
             "healthy": "🟢",
             "normal": "🟢",
         }.get(severity, "⚠️")
-        card_name = f"{severity_emoji} [{task.kind.value}] {task.params.get('pipeline_name', task.id)}"
+        card_name = (
+            f"{severity_emoji} [{task.kind.value}] {task.params.get('pipeline_name', task.id)}"
+        )
         # Convert HTML to plain text for Trello
         card_desc = _strip_html(message)
 
@@ -249,7 +285,20 @@ def _deliver_trello(
             desc=card_desc,
             list_id=list_id,
         )
-        logger.info("[executor] Trello card created: %s (ID: %s)", card.get("name"), card.get("id"))
+        card_id = card.get("id")
+        logger.info("[executor] Trello card created: %s (ID: %s)", card.get("name"), card_id)
+
+        pdf_path = resolved_integrations.get("_pdf_path")
+        if pdf_path and card_id:
+            from app.integrations.trello import attach_file_to_trello_card
+
+            attach_file_to_trello_card(
+                config=config,
+                card_id=card_id,
+                file_path=str(pdf_path),
+                name="SRE Report",
+            )
+
         return True, ""
     except Exception as exc:
         logger.warning("[executor] Trello delivery failed: %s", exc)
@@ -282,13 +331,29 @@ def _deliver_telegram(
     telegram_html = resolved_integrations.get("_telegram_message")
     if not telegram_html:
         from app.remote.telegram_bot import _format_chat_response
+
         telegram_html = _format_chat_response(message)
 
     truncated = truncate_for_telegram_html(telegram_html, 4096, suffix="…")
     ok, error, msg_id = post_telegram_message(task.chat_id, truncated, bot_token, parse_mode="HTML")
-    if ok:
-        return True, "", msg_id
-    return False, error, ""
+    if not ok:
+        return False, error, ""
+
+    pdf_path = resolved_integrations.get("_pdf_path")
+    if pdf_path:
+        from app.utils.telegram_delivery import send_telegram_document
+
+        doc_ok, doc_err, _ = send_telegram_document(
+            task.chat_id,
+            str(pdf_path),
+            bot_token,
+            caption="SRE Report PDF",
+            reply_to_message_id=msg_id,
+        )
+        if not doc_ok:
+            logger.warning("[executor] Telegram PDF attachment failed: %s", doc_err)
+
+    return True, "", msg_id
 
 
 def _deliver_slack(task: ScheduledTask, message: str) -> tuple[bool, str, str]:
@@ -414,6 +479,56 @@ def _emit_analytics(task: ScheduledTask, status: TaskStatus, error: str = "") ->
     except Exception:
         # Analytics must never crash the scheduler
         logger.debug("Failed to emit analytics for task %s", task.id, exc_info=True)
+
+
+def _maybe_generate_pdf_report(
+    task: ScheduledTask,
+    resolved_integrations: dict[str, Any],
+) -> str | None:
+    snapshot_instruction = resolved_integrations.get("_snapshot_instruction")
+    investigation_state = resolved_integrations.get("_investigation_state")
+    if not snapshot_instruction or not investigation_state:
+        return None
+
+    try:
+        from app.scheduler.snapshot_runner import run_snapshot
+        from app.utils.pdf_generator import generate_pdf
+        from app.utils.report_structurer import structure_report
+
+        lang = os.getenv("OPENSRE_LANGUAGE", "en").strip().lower()
+        is_vi = lang in ("vi", "vietnamese")
+
+        sys.stderr.write(
+            f"[Snapshot] Running snapshot for task {task.id}...\n"
+        )
+        snapshot_result = run_snapshot(
+            instruction=str(snapshot_instruction),
+            resolved=resolved_integrations,
+        )
+
+        sys.stderr.write(
+            f"[Snapshot] Structuring report for task {task.id}...\n"
+        )
+        report = structure_report(
+            investigation_state=investigation_state,
+            snapshot_result={
+                "queries": snapshot_result.queries,
+                "results": snapshot_result.results,
+                "markdown_summary": snapshot_result.markdown_summary,
+                "errors": snapshot_result.errors,
+            },
+            language="vi" if is_vi else "en",
+        )
+
+        pdf_path = generate_pdf(report)
+        sys.stderr.write(
+            f"[Snapshot] PDF generated: {pdf_path}\n"
+        )
+        return str(pdf_path)
+    except Exception as exc:
+        logger.warning("[Snapshot] PDF generation failed for task %s: %s", task.id, exc)
+        sys.stderr.write(f"[Snapshot] PDF generation failed: {exc}\n")
+        return None
 
 
 __all__ = ["execute_task"]

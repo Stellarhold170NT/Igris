@@ -952,8 +952,10 @@ def _classify_service_instance(
         try:
             vauthz_config = VauthzIntegrationConfig.model_validate(
                 {
-                    "pdp_syncheck_url": credentials.get("pdp_syncheck_url") or credentials.get("syncheck_url", ""),
-                    "pdp_gateway_url": credentials.get("pdp_gateway_url") or credentials.get("gateway_url", ""),
+                    "pdp_syncheck_url": credentials.get("pdp_syncheck_url")
+                    or credentials.get("syncheck_url", ""),
+                    "pdp_gateway_url": credentials.get("pdp_gateway_url")
+                    or credentials.get("gateway_url", ""),
                     "vauthz_url": credentials.get("vauthz_url", ""),
                     "integration_id": record_id,
                 }
@@ -1582,7 +1584,8 @@ def load_env_integrations() -> list[dict[str, Any]]:
                         "database": mariadb_database,
                         "username": os.getenv("MARIADB_USERNAME", "").strip(),
                         "password": os.getenv("MARIADB_PASSWORD", "").strip(),
-                        "ssl": os.getenv("MARIADB_SSL", "true").strip().lower() in ("true", "1", "yes"),
+                        "ssl": os.getenv("MARIADB_SSL", "true").strip().lower()
+                        in ("true", "1", "yes"),
                     }
                 )
                 integrations.append(

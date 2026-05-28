@@ -32,7 +32,9 @@ def test_parse_grafana_variable_query() -> None:
     assert metric == "mysql_up"
 
     # label_values with complex selector metric
-    q_type, label, metric = parse_grafana_variable_query("label_values(mysql_up{job=\"mysql\"}, instance)")
+    q_type, label, metric = parse_grafana_variable_query(
+        'label_values(mysql_up{job="mysql"}, instance)'
+    )
     assert q_type == "label_values"
     assert label == "instance"
     assert metric == 'mysql_up{job="mysql"}'
@@ -44,7 +46,9 @@ def test_parse_grafana_variable_query() -> None:
     assert metric == "mysql_up"
 
     # label_values with multiple commas inside curly braces selector
-    q_type, label, metric = parse_grafana_variable_query('label_values(node_uname_info{job="mysql", env="prod"}, instance)')
+    q_type, label, metric = parse_grafana_variable_query(
+        'label_values(node_uname_info{job="mysql", env="prod"}, instance)'
+    )
     assert q_type == "label_values"
     assert label == "instance"
     assert metric == 'node_uname_info{job="mysql", env="prod"}'
@@ -57,7 +61,12 @@ def test_parse_grafana_variable_query() -> None:
 
 
 def test_resolve_dependent_variables() -> None:
-    current = {"cluster": "prod", "env": "live", "hosts": ["maria01", "maria02"], "instance": "$__all"}
+    current = {
+        "cluster": "prod",
+        "env": "live",
+        "hosts": ["maria01", "maria02"],
+        "instance": "$__all",
+    }
 
     # Standard $ replacement
     query = 'mysql_up{cluster="$cluster", env="${env}"}'
@@ -114,7 +123,9 @@ def test_list_grafana_dashboards_mock() -> None:
         {"uid": "db1", "title": "MySQL", "folder_title": "Database", "url": "/d/db1"}
     ]
 
-    with patch("app.tools.GrafanaListDashboardsTool._resolve_grafana_client", return_value=mock_client):
+    with patch(
+        "app.tools.GrafanaListDashboardsTool._resolve_grafana_client", return_value=mock_client
+    ):
         res = list_grafana_dashboards(query="mysql", grafana_endpoint="http://grafana")
 
     assert res["available"] is True
@@ -158,7 +169,9 @@ def test_get_grafana_dashboard_filters_happy_path() -> None:
     ]
     mock_client.query_prometheus_label_values.return_value = ["maria01", "maria02"]
 
-    with patch("app.tools.GrafanaGetDashboardFiltersTool._resolve_grafana_client", return_value=mock_client):
+    with patch(
+        "app.tools.GrafanaGetDashboardFiltersTool._resolve_grafana_client", return_value=mock_client
+    ):
         res = get_grafana_dashboard_filters(dashboard_uid="db1", grafana_endpoint="http://grafana")
 
     assert res["available"] is True
@@ -198,9 +211,14 @@ def test_get_grafana_dashboard_values_happy_path() -> None:
         ],
     }
 
-    with patch("app.tools.GrafanaGetDashboardValuesTool._resolve_grafana_client", return_value=mock_client):
+    with patch(
+        "app.tools.GrafanaGetDashboardValuesTool._resolve_grafana_client", return_value=mock_client
+    ):
         res = get_grafana_dashboard_values(
-            dashboard_uid="db1", time_range="1h", variables={"host": "maria01"}, grafana_endpoint="http://grafana"
+            dashboard_uid="db1",
+            time_range="1h",
+            variables={"host": "maria01"},
+            grafana_endpoint="http://grafana",
         )
 
     assert res["available"] is True
@@ -244,7 +262,12 @@ def test_get_grafana_dashboard_values_with_blank_defaults() -> None:
             "panels": [
                 {
                     "title": "MySQL Questions",
-                    "targets": [{"expr": "rate(mysql_questions{instance=~\"$host\"}[$__interval])", "refId": "A"}],
+                    "targets": [
+                        {
+                            "expr": 'rate(mysql_questions{instance=~"$host"}[$__interval])',
+                            "refId": "A",
+                        }
+                    ],
                 }
             ],
         }
@@ -260,7 +283,9 @@ def test_get_grafana_dashboard_values_with_blank_defaults() -> None:
         ],
     }
 
-    with patch("app.tools.GrafanaGetDashboardValuesTool._resolve_grafana_client", return_value=mock_client):
+    with patch(
+        "app.tools.GrafanaGetDashboardValuesTool._resolve_grafana_client", return_value=mock_client
+    ):
         res = get_grafana_dashboard_values(
             dashboard_uid="db1", time_range="1h", variables={}, grafana_endpoint="http://grafana"
         )
@@ -290,9 +315,9 @@ def test_get_grafana_dashboard_filters_cascading() -> None:
                     {
                         "name": "node",
                         "type": "query",
-                        "query": "label_values(node_uname_info{job=\"$job\"}, instance)",
+                        "query": 'label_values(node_uname_info{job="$job"}, instance)',
                         "current": {"value": ""},
-                    }
+                    },
                 ]
             },
         }
@@ -311,8 +336,12 @@ def test_get_grafana_dashboard_filters_cascading() -> None:
 
     mock_client.query_prometheus_label_values.side_effect = mock_query_label_values
 
-    with patch("app.tools.GrafanaGetDashboardFiltersTool._resolve_grafana_client", return_value=mock_client):
-        res = get_grafana_dashboard_filters(dashboard_uid="db_cascade", grafana_endpoint="http://grafana")
+    with patch(
+        "app.tools.GrafanaGetDashboardFiltersTool._resolve_grafana_client", return_value=mock_client
+    ):
+        res = get_grafana_dashboard_filters(
+            dashboard_uid="db_cascade", grafana_endpoint="http://grafana"
+        )
 
     assert res["available"] is True
     filters = res["filters"]
@@ -327,6 +356,3 @@ def test_get_grafana_dashboard_filters_cascading() -> None:
     assert filters[1]["name"] == "node"
     assert filters[1]["current_value"] == "maria01"
     assert filters[1]["options"] == ["maria01", "maria02"]
-
-
-
