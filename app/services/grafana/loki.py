@@ -43,49 +43,81 @@ class LokiMixin:
         end_ns = int(time.time() * 1e9)
         start_ns = end_ns - (time_range_minutes * 60 * int(1e9))
 
-        params: dict[str, str] = {
-            "query": query,
-            "limit": str(limit),
-            "start": str(start_ns),
-            "end": str(end_ns),
-        }
+        logs = []
+        total_streams = 0
+        current_end_ns = end_ns
 
-        try:
-            data = self._make_request(url, params=params)
-            result = data.get("data", {}).get("result", [])
+        while len(logs) < limit:
+            chunk_limit = min(limit - len(logs), 5000)
+            if chunk_limit <= 0:
+                break
 
-            logs = []
-            for stream in result:
-                stream_labels = stream.get("stream", {})
-                values = stream.get("values", [])
-
-                for timestamp_ns, log_line in values:
-                    logs.append(
-                        {
-                            "timestamp": timestamp_ns,
-                            "message": log_line,
-                            "labels": dict(stream_labels),
-                        }
-                    )
-
-            return {
-                "success": True,
-                "logs": logs,
-                "total_streams": len(result),
-                "total_logs": len(logs),
+            params: dict[str, str] = {
                 "query": query,
-                "account_id": self.account_id,
+                "limit": str(chunk_limit),
+                "start": str(start_ns),
+                "end": str(current_end_ns),
             }
-        except Exception as e:
-            error_msg = str(e)
-            response_text = ""
-            if hasattr(e, "response") and e.response is not None:
-                response_text = e.response.text[:300]
-                error_msg = f"Loki query failed: {e.response.status_code}"
 
-            return {
-                "success": False,
-                "error": error_msg,
-                "response": response_text,
-                "logs": [],
-            }
+            try:
+                data = self._make_request(url, params=params)
+                result = data.get("data", {}).get("result", [])
+                if not result:
+                    break
+
+                chunk_logs = []
+                total_streams += len(result)
+                for stream in result:
+                    stream_labels = stream.get("stream", {})
+                    values = stream.get("values", [])
+
+                    for timestamp_ns, log_line in values:
+                        chunk_logs.append(
+                            {
+                                "timestamp": timestamp_ns,
+                                "message": log_line,
+                                "labels": dict(stream_labels),
+                            }
+                        )
+
+                if not chunk_logs:
+                    break
+
+                logs.extend(chunk_logs)
+
+                if len(chunk_logs) < chunk_limit:
+                    break
+
+                try:
+                    oldest_ns = min(int(log["timestamp"]) for log in chunk_logs)
+                    current_end_ns = oldest_ns - 1
+                except ValueError:
+                    break
+
+                if current_end_ns <= start_ns:
+                    break
+
+            except Exception as e:
+                if logs:
+                    break
+                error_msg = str(e)
+                response_text = ""
+                if hasattr(e, "response") and e.response is not None:
+                    response_text = e.response.text[:300]
+                    error_msg = f"Loki query failed: {e.response.status_code}"
+
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "response": response_text,
+                    "logs": [],
+                }
+
+        return {
+            "success": True,
+            "logs": logs,
+            "total_streams": total_streams,
+            "total_logs": len(logs),
+            "query": query,
+            "account_id": self.account_id,
+        }

@@ -249,3 +249,67 @@ class TestQueryLokiEmptyResult:
         assert result["total_logs"] == 0
         assert result["query"] == _QUERY
         assert result["account_id"] == "acct-1"
+
+
+class TestQueryLokiPagination:
+    """Exercises pagination when limit is greater than 5000."""
+
+    def test_paginated_query_flow(self) -> None:
+        host = _FakeLokiHost()
+
+        # 1st response: 5000 logs (represented by mock result), oldest timestamp is 1700000000000000000
+        # 2nd response: remaining logs
+        first_payload = {
+            "status": "success",
+            "data": {
+                "result": [
+                    {
+                        "stream": {"service_name": "svc"},
+                        "values": [
+                            ["1700000000000000001", "log 1"],
+                            ["1700000000000000000", "log 0"],
+                        ]
+                    }
+                ]
+            }
+        }
+        second_payload = {
+            "status": "success",
+            "data": {
+                "result": [
+                    {
+                        "stream": {"service_name": "svc"},
+                        "values": [
+                            ["1699999999999999999", "log older"],
+                        ]
+                    }
+                ]
+            }
+        }
+
+        host.make_request_mock.side_effect = [first_payload, second_payload]
+
+        # Let's generate 5000 entries dynamically in python to keep it real:
+        first_values = [[str(1700000000000000000 + i), f"log {i}"] for i in range(5000)]
+        first_payload["data"]["result"][0]["values"] = first_values
+
+        with patch("app.services.grafana.loki.time.time", return_value=1700000000.0):
+            result = host.query_loki(_QUERY, limit=6000)
+
+        assert result["success"] is True
+        assert len(result["logs"]) == 5001  # 5000 from first page, 1 from second page
+        assert result["logs"][0]["message"] == "log 0"
+        assert result["logs"][-1]["message"] == "log older"
+
+        # Verify both requests were made
+        assert host.make_request_mock.call_count == 2
+
+        # Inspect params for the first call
+        first_call_args = host.make_request_mock.call_args_list[0]
+        assert first_call_args[1]["params"]["limit"] == "5000"
+
+        # Inspect params for the second call (should request limit=1000 and end=1699999999999999999)
+        second_call_args = host.make_request_mock.call_args_list[1]
+        assert second_call_args[1]["params"]["limit"] == "1000"
+        assert second_call_args[1]["params"]["end"] == "1699999999999999999"
+

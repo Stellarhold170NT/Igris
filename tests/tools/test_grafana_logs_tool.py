@@ -131,3 +131,29 @@ def test_run_fallback_to_pipeline_name() -> None:
             grafana_endpoint="https://grafana.example.com",
         )
     assert result["available"] is True
+
+
+def test_run_with_search_pattern() -> None:
+    mock_client = MagicMock()
+    mock_client.is_configured = True
+    mock_client.loki_datasource_uid = "loki-uid"
+    mock_client.account_id = "acc-1"
+    mock_client.query_loki.return_value = {
+        "success": True,
+        "logs": [{"message": "OPA error connection Refused"}],
+        "total_logs": 1,
+    }
+    with patch(
+        "app.tools.GrafanaLogsTool.get_grafana_client_from_credentials", return_value=mock_client
+    ):
+        result = query_grafana_logs(
+            service_name="svc",
+            grafana_endpoint="https://grafana.example.com",
+            search_pattern="OPA error",
+        )
+    assert result["available"] is True
+    # Verify the constructed query passed to client.query_loki has the search pattern |= "OPA error"
+    mock_client.query_loki.assert_called_once()
+    called_query = mock_client.query_loki.call_args[0][0]
+    assert '{service_name="svc"} |= "OPA error"' in called_query
+

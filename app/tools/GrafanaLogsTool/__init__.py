@@ -58,6 +58,7 @@ def _query_grafana_logs_extract_params(sources: dict[str, dict]) -> dict[str, An
         "time_range_minutes": grafana.get("time_range_minutes", 60),
         "limit": 100,
         "grafana_backend": grafana.get("_backend"),
+        "search_pattern": grafana.get("search_pattern"),
         **_grafana_creds(grafana),
     }
 
@@ -87,6 +88,10 @@ def _query_grafana_logs_available(sources: dict[str, dict]) -> bool:
             "grafana_endpoint": {"type": "string"},
             "grafana_api_key": {"type": "string"},
             "pipeline_name": {"type": "string"},
+            "search_pattern": {
+                "type": "string",
+                "description": "Optional substring search pattern to filter logs (e.g. 'Failed to send request to OPA').",
+            },
         },
         "required": ["service_name"],
     },
@@ -102,6 +107,7 @@ def query_grafana_logs(
     grafana_api_key: str | None = None,
     pipeline_name: str | None = None,
     grafana_backend: Any = None,
+    search_pattern: str | None = None,
     **_kwargs: Any,
 ) -> dict:
     """Query Grafana Loki for pipeline logs.
@@ -116,7 +122,8 @@ def query_grafana_logs(
         for stream in raw.get("data", {}).get("result", []):
             stream_labels = stream.get("stream", {})
             for ts_ns, line in stream.get("values", []):
-                logs.append({"timestamp": ts_ns, "message": line, **stream_labels})
+                if not search_pattern or search_pattern in line:
+                    logs.append({"timestamp": ts_ns, "message": line, **stream_labels})
         error_keywords = ("error", "fail", "exception", "traceback")
         error_logs = [
             log
@@ -163,9 +170,13 @@ def query_grafana_logs(
         }
 
     def _build_query(label: str, value: str) -> str:
+        base_query = f'{{{label}="{value}"}}'
         if execution_run_id:
-            return f'{{{label}="{value}"}} |= "{execution_run_id}"'
-        return f'{{{label}="{value}"}}'
+            base_query += f' |= "{execution_run_id}"'
+        if search_pattern:
+            escaped = search_pattern.replace('"', '\\"')
+            base_query += f' |= "{escaped}"'
+        return base_query
 
     query = _build_query("service_name", service_name)
     result = client.query_loki(query, time_range_minutes=time_range_minutes, limit=limit)
